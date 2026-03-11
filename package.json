@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "node --import tsx --test src/query.test.ts",
+    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

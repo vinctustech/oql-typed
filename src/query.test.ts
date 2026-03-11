@@ -1084,6 +1084,364 @@ describe('complex end-to-end queries', () => {
       'user {id firstName lastName email role enabled lastLoginAt account {id name enabled plan createdAt} stores {id name enabled color place {id latitude longitude address}} vehicle {id make model year active}} [id = :p0]',
     )
   })
+
+  it('all four relation types in one query with EXISTS on two relations', async () => {
+    const oql = mockOQL()
+
+    // user has: manyToOne (account), manyToMany (stores), oneToOne (vehicle)
+    // store has: oneToMany (vehicles, trips)
+    const qb = query(oql, user)
+      .project('id', 'firstName', 'role', {
+        account: ['id', 'name'],
+        stores: ['id', 'name', { vehicles: ['id', 'make', 'active'] }],
+        vehicle: ['id', 'make', 'model', { store: ['id', 'name'] }],
+      })
+      .select(
+        and(
+          eq(user.enabled, true),
+          exists(user.stores, eq(store.enabled, true)),
+          not(exists(user.stores, eq(store.name, 'Closed Store'))),
+        ),
+      )
+      .orderBy(asc(user.lastName))
+      .limit(20)
+
+    type Result = Awaited<ReturnType<typeof qb.many>>[number]
+    type _ = AssertTrue<
+      AssertEqual<
+        Result,
+        {
+          id: string
+          firstName: string
+          role: Role
+          account: { id: string; name: string }
+          stores: {
+            id: string
+            name: string
+            vehicles: { id: string; make: string; active: boolean }[]
+          }[]
+          vehicle: {
+            id: string
+            make: string
+            model: string
+            store: { id: string; name: string }
+          } | null
+        }
+      >
+    >
+
+    await qb.many()
+    assert.equal(
+      oql.calls[0].query,
+      'user {id firstName role account {id name} stores {id name vehicles {id make active}} vehicle {id make model store {id name}}} [enabled = :p0 AND EXISTS(stores [enabled = :p1]) AND NOT (EXISTS(stores [name = :p2]))] <lastName ASC> |, 20|',
+    )
+    assert.deepEqual(oql.calls[0].params, {
+      p0: true,
+      p1: true,
+      p2: 'Closed Store',
+    })
+  })
+
+  it('4-level nesting with nullable propagation at each level', async () => {
+    const oql = mockOQL()
+
+    // trip → vehicle (nullable) → driver (nullable) → account → (scalars)
+    // trip → store → place → (scalars)
+    const qb = query(oql, trip)
+      .project('id', 'state', {
+        vehicle: ['id', {
+          driver: ['id', 'firstName', {
+            account: ['id', 'name', 'plan'],
+          }],
+          store: ['id', 'name'],
+        }],
+        store: ['id', {
+          place: ['id', 'latitude', 'longitude', 'address'],
+        }],
+      })
+      .select(eq(trip.id, 't-1'))
+
+    type Result = Awaited<ReturnType<typeof qb.one>>
+    type _ = AssertTrue<
+      AssertEqual<
+        Result,
+        | {
+            id: string
+            state: TripState
+            vehicle: {
+              id: string
+              driver: {
+                id: string
+                firstName: string
+                account: { id: string; name: string; plan: string }
+              } | null
+              store: { id: string; name: string }
+            } | null
+            store: {
+              id: string
+              place: {
+                id: string
+                latitude: number
+                longitude: number
+                address: string | null
+              }
+            }
+          }
+        | undefined
+      >
+    >
+
+    await qb.one()
+    assert.equal(
+      oql.calls[0].query,
+      'trip {id state vehicle {id driver {id firstName account {id name plan}} store {id name}} store {id place {id latitude longitude address}}} [id = :p0]',
+    )
+  })
+
+  it('same entity reached through different relation paths', async () => {
+    const oql = mockOQL()
+
+    // store appears twice: once through trip.store, once through trip.vehicle.store
+    // place appears through both store paths
+    const qb = query(oql, trip)
+      .project('id', {
+        store: ['id', 'name', { place: ['latitude', 'longitude'] }],
+        vehicle: ['id', { store: ['id', 'name', { place: ['latitude', 'longitude'] }] }],
+      })
+      .select(inList(trip.state, ['REQUESTED', 'CONFIRMED']))
+
+    type Result = Awaited<ReturnType<typeof qb.many>>[number]
+    type _ = AssertTrue<
+      AssertEqual<
+        Result,
+        {
+          id: string
+          store: {
+            id: string
+            name: string
+            place: { latitude: number; longitude: number }
+          }
+          vehicle: {
+            id: string
+            store: {
+              id: string
+              name: string
+              place: { latitude: number; longitude: number }
+            }
+          } | null
+        }
+      >
+    >
+
+    await qb.many()
+    assert.equal(
+      oql.calls[0].query,
+      'trip {id store {id name place {latitude longitude}} vehicle {id store {id name place {latitude longitude}}}} [state IN :p0]',
+    )
+  })
+
+  it('oneToMany with nested manyToMany and filtering', async () => {
+    const oql = mockOQL()
+
+    // store → trips (oneToMany) → customer → places (manyToMany)
+    // store → users (manyToMany) with scalar selection
+    const qb = query(oql, store)
+      .project('id', 'name', {
+        trips: ['id', 'state', 'seats', {
+          customer: ['id', 'firstName', 'phone', {
+            places: ['id', 'latitude', 'longitude'],
+          }],
+        }],
+        users: ['id', 'firstName', 'lastName', 'email', 'role'],
+      })
+      .select(
+        and(
+          eq(store.enabled, true),
+          exists(store.trips, inList(trip.state, ['REQUESTED', 'EN_ROUTE'])),
+          exists(store.users, eq(user.role, 'DRIVER')),
+        ),
+      )
+      .orderBy(asc(store.name))
+
+    type Result = Awaited<ReturnType<typeof qb.many>>[number]
+    type _ = AssertTrue<
+      AssertEqual<
+        Result,
+        {
+          id: string
+          name: string
+          trips: {
+            id: string
+            state: TripState
+            seats: number
+            customer: {
+              id: string
+              firstName: string
+              phone: string
+              places: { id: string; latitude: number; longitude: number }[]
+            }
+          }[]
+          users: {
+            id: string
+            firstName: string
+            lastName: string
+            email: string
+            role: Role
+          }[]
+        }
+      >
+    >
+
+    await qb.many()
+    assert.equal(
+      oql.calls[0].query,
+      'store {id name trips {id state seats customer {id firstName phone places {id latitude longitude}}} users {id firstName lastName email role}} [enabled = :p0 AND EXISTS(trips [state IN :p1]) AND EXISTS(users [role = :p2])] <name ASC>',
+    )
+    assert.deepEqual(oql.calls[0].params, {
+      p0: true,
+      p1: ['REQUESTED', 'EN_ROUTE'],
+      p2: 'DRIVER',
+    })
+  })
+
+  it('vehicle with bidirectional relation traversal', async () => {
+    const oql = mockOQL()
+
+    // vehicle → driver (manyToOne, nullable) → stores (manyToMany) → place (manyToOne)
+    // vehicle → store (manyToOne) → users (manyToMany)
+    // vehicle → trips (oneToMany) → customer
+    const qb = query(oql, vehicle)
+      .project('id', 'make', 'model', 'active', {
+        driver: ['id', 'firstName', 'lastName', {
+          stores: ['id', 'name'],
+        }],
+        store: ['id', 'name', {
+          users: ['id', 'firstName', 'role'],
+          place: ['latitude', 'longitude'],
+        }],
+        trips: ['id', 'state', {
+          customer: ['id', 'firstName', 'lastName'],
+        }],
+      })
+      .select(
+        and(
+          eq(vehicle.active, true),
+          isNotNull(vehicle.driver),
+          exists(vehicle.trips, ne(trip.state, 'CANCELLED')),
+        ),
+      )
+      .orderBy(desc(vehicle.make), asc(vehicle.model))
+      .limit(50)
+      .offset(100)
+
+    type Result = Awaited<ReturnType<typeof qb.many>>[number]
+    type _ = AssertTrue<
+      AssertEqual<
+        Result,
+        {
+          id: string
+          make: string
+          model: string
+          active: boolean
+          driver: {
+            id: string
+            firstName: string
+            lastName: string
+            stores: { id: string; name: string }[]
+          } | null
+          store: {
+            id: string
+            name: string
+            users: { id: string; firstName: string; role: Role }[]
+            place: { latitude: number; longitude: number }
+          }
+          trips: {
+            id: string
+            state: TripState
+            customer: { id: string; firstName: string; lastName: string }
+          }[]
+        }
+      >
+    >
+
+    await qb.many()
+    assert.equal(
+      oql.calls[0].query,
+      'vehicle {id make model active driver {id firstName lastName stores {id name}} store {id name users {id firstName role} place {latitude longitude}} trips {id state customer {id firstName lastName}}} [active = :p0 AND driver IS NOT NULL AND EXISTS(trips [state != :p1])] <make DESC, model ASC> |100, 50|',
+    )
+    assert.deepEqual(oql.calls[0].params, {
+      p0: true,
+      p1: 'CANCELLED',
+    })
+  })
+
+  it('customer with manyToMany places, queried through trip with full chain', async () => {
+    const oql = mockOQL()
+
+    // trip → customer → places (manyToMany)
+    // trip → store → vehicles → driver (nullable)
+    const qb = query(oql, trip)
+      .project('id', 'state', 'createdAt', {
+        customer: ['id', 'firstName', 'lastName', 'phone', 'tags', {
+          places: ['id', 'latitude', 'longitude', 'address'],
+        }],
+        store: ['id', 'name', {
+          vehicles: ['id', 'make', 'active', {
+            driver: ['id', 'firstName'],
+          }],
+        }],
+      })
+      .select(
+        and(
+          inList(trip.state, ['CONFIRMED', 'EN_ROUTE']),
+          gt(trip.seats, 0),
+          between(trip.createdAt, new Date('2026-03-01'), new Date('2026-03-11')),
+          not(isNull(trip.customer)),
+        ),
+      )
+      .orderBy(desc(trip.createdAt))
+
+    type Result = Awaited<ReturnType<typeof qb.many>>[number]
+    type _ = AssertTrue<
+      AssertEqual<
+        Result,
+        {
+          id: string
+          state: TripState
+          createdAt: Date
+          customer: {
+            id: string
+            firstName: string
+            lastName: string
+            phone: string
+            tags: string[] | null
+            places: {
+              id: string
+              latitude: number
+              longitude: number
+              address: string | null
+            }[]
+          }
+          store: {
+            id: string
+            name: string
+            vehicles: {
+              id: string
+              make: string
+              active: boolean
+              driver: { id: string; firstName: string } | null
+            }[]
+          }
+        }
+      >
+    >
+
+    await qb.many()
+    assert.equal(
+      oql.calls[0].query,
+      'trip {id state createdAt customer {id firstName lastName phone tags places {id latitude longitude address}} store {id name vehicles {id make active driver {id firstName}}}} [state IN :p0 AND seats > :p1 AND createdAt BETWEEN :p2 AND :p3 AND NOT (customer IS NULL)] <createdAt DESC>',
+    )
+  })
 })
 
 describe('generateDM', () => {
