@@ -1,6 +1,6 @@
 {
   "name": "@vinctus/oql-typed",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Compile-time typed queries for OQL",
   "type": "module",
   "main": "dist/index.js",
