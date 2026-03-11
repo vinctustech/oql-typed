@@ -1,0 +1,34 @@
+{
+  "name": "@vinctus/oql-typed",
+  "version": "0.1.0",
+  "description": "Compile-time typed queries for OQL",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test src/query.test.ts",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "bin": {
+    "oql-typed-codegen": "dist/cli.js"
+  },
+  "peerDependencies": {
+    "@vinctus/oql": ">=0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "oql",
+    "typescript",
+    "typed",
+    "query"
+  ],
+  "license": "ISC"
+}
