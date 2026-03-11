@@ -10,7 +10,7 @@ export interface OQLInstance {
   count(query: string, params?: Record<string, unknown>): Promise<number>
 }
 
-// ── Build the projection string from variadic args ──
+// ── Build the selection string from variadic args ──
 
 function buildProjection<D extends EntityDefinition>(args: readonly ProjectionArg<D>[]): string {
   const parts: string[] = []
@@ -53,7 +53,7 @@ class QueryBuilder<D extends EntityDefinition, Result> {
     this.projectionStr = projectionStr
   }
 
-  select(filter: FilterExpr): this {
+  where(filter: FilterExpr): this {
     this.filterExpr = filter
     return this
   }
@@ -121,11 +121,11 @@ class QueryBuilder<D extends EntityDefinition, Result> {
 // ── Public query function ──
 
 interface QueryStarter<D extends EntityDefinition> {
-  project<const Args extends readonly ProjectionArg<D>[]>(
+  select<const Args extends readonly ProjectionArg<D>[]>(
     ...args: Args
   ): QueryBuilder<D, InferProjection<D, Args>>
 
-  select(filter: FilterExpr): QueryBuilder<D, InferAllScalars<D>>
+  where(filter: FilterExpr): QueryBuilder<D, InferAllScalars<D>>
   orderBy(...orders: OrderExpr[]): QueryBuilder<D, InferAllScalars<D>>
   limit(n: number): QueryBuilder<D, InferAllScalars<D>>
   offset(n: number): QueryBuilder<D, InferAllScalars<D>>
@@ -139,13 +139,13 @@ export function query<D extends EntityDefinition>(
   entity: EntityInstance<D>,
 ): QueryStarter<D> {
   return {
-    project<const Args extends readonly ProjectionArg<D>[]>(...args: Args) {
+    select<const Args extends readonly ProjectionArg<D>[]>(...args: Args) {
       const projectionStr = buildProjection(args)
       return new QueryBuilder<D, InferProjection<D, Args>>(oql, entity, projectionStr)
     },
 
-    select(filter: FilterExpr) {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).select(filter)
+    where(filter: FilterExpr) {
+      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).where(filter)
     },
 
     orderBy(...orders: OrderExpr[]) {

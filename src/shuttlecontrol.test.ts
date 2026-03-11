@@ -354,7 +354,7 @@ describe('AutoDispatchService: find available drivers', () => {
     const oql = mockOQL()
 
     const qb = query(oql, user)
-      .project('id', {
+      .select('id', {
         vehicle: ['seats', {
           vehicleCoordinate: ['latitude', 'longitude'],
         }],
@@ -364,7 +364,7 @@ describe('AutoDispatchService: find available drivers', () => {
           }],
         }],
       })
-      .select(
+      .where(
         and(
           exists(user.stores, eq(store.id, 'store-1')),
           eq(user.enabled, true),
@@ -419,14 +419,14 @@ describe('AutoDispatchService: scheduled trip vehicles', () => {
     const endDate = new Date('2026-03-11T18:00:00Z')
 
     const qb = query(oql, vehicle)
-      .project('id', 'seats', {
+      .select('id', 'seats', {
         trips: ['id', 'seats', 'predictedDistance', {
           steps: ['id', {
             place: ['id', 'latitude', 'longitude'],
           }],
         }],
       })
-      .select(
+      .where(
         and(
           eq(vehicle.store, 'store-1'),
           eq(vehicle.enabled, true),
@@ -469,7 +469,7 @@ describe('TripController: trip websocket query (simplified)', () => {
     const oql = mockOQL()
 
     const qb = query(oql, trip)
-      .project('id', 'state', 'position', 'seats', 'reference', 'scheduledAt', 'requestedAt', 'createdAt', 'confirmedAt', 'finishedAt', 'predictedDistance', 'actualDistance', 'predictedDuration', 'geometry', {
+      .select('id', 'state', 'position', 'seats', 'reference', 'scheduledAt', 'requestedAt', 'createdAt', 'confirmedAt', 'finishedAt', 'predictedDistance', 'actualDistance', 'predictedDuration', 'geometry', {
         customer: ['id', 'firstName', 'lastName', 'companyName', 'phoneNumber', 'email', 'language'],
         customerReview: ['id', 'rating', 'comment', 'createdAt'],
         workflow: ['id', 'name', 'color', 'customerReviewsEnabled', 'companyNameRequired', 'phoneNumberRequired', 'customerRequired', 'maximumScheduledAtDays', 'allowActivateByDriver', 'schedulerStepSize', {
@@ -510,7 +510,7 @@ describe('TripController: trip websocket query (simplified)', () => {
           createdBy: ['id', 'firstName', 'lastName'],
         }],
       })
-      .select(eq(trip.id, 'trip-123'))
+      .where(eq(trip.id, 'trip-123'))
 
     type Result = Awaited<ReturnType<typeof qb.one>>
     type _ = AssertTrue<
@@ -720,7 +720,7 @@ describe('UserService: user profile query', () => {
     const oql = mockOQL()
 
     const qb = query(oql, user)
-      .project('id', 'role', 'enabled', 'firstName', 'lastName', 'phoneNumber', 'email', 'language', 'profileUrl', 'createdAt', 'lastLoginAt', {
+      .select('id', 'role', 'enabled', 'firstName', 'lastName', 'phoneNumber', 'email', 'language', 'profileUrl', 'createdAt', 'lastLoginAt', {
         account: ['id', 'enabled', 'name', 'plan', 'uom', 'country', 'createdAt', 'trialEndAt', 'stripeConnectAccountId', 'stripeConnectAccountOnboarded', {
           integrations: ['id', 'name'],
         }],
@@ -733,7 +733,7 @@ describe('UserService: user profile query', () => {
           store: ['id', 'name', 'color'],
         }],
       })
-      .select(eq(user.id, 'user-1'))
+      .where(eq(user.id, 'user-1'))
 
     type Result = Awaited<ReturnType<typeof qb.one>>
     type _ = AssertTrue<
@@ -812,7 +812,7 @@ describe('UserService: paginated user list with search', () => {
     const search = '%john%'
 
     const qb = query(oql, user)
-      .project('id', 'role', 'enabled', 'firstName', 'lastName', 'phoneNumber', 'email', 'language', 'profileUrl', 'createdAt', 'lastLoginAt', {
+      .select('id', 'role', 'enabled', 'firstName', 'lastName', 'phoneNumber', 'email', 'language', 'profileUrl', 'createdAt', 'lastLoginAt', {
         account: ['id', 'enabled', 'name', 'plan', 'uom', 'country', 'createdAt', 'trialEndAt', 'stripeConnectAccountId', 'stripeConnectAccountOnboarded', {
           integrations: ['id', 'name'],
         }],
@@ -823,7 +823,7 @@ describe('UserService: paginated user list with search', () => {
           store: ['id', 'name', 'color'],
         }],
       })
-      .select(
+      .where(
         and(
           exists(user.stores, inList(store.id, storeIds)),
           eq(user.enabled, true),
@@ -864,12 +864,12 @@ describe('ZoneService: trips without zones', () => {
     const oql = mockOQL()
 
     const qb = query(oql, trip)
-      .project('id', 'state', {
+      .select('id', 'state', {
         steps: ['id', 'type', {
           place: ['id', 'latitude', 'longitude'],
         }],
       })
-      .select(
+      .where(
         and(
           inList(trip.state, ['REQUESTED', 'SCHEDULED']),
           eq(trip.store, 'store-1'),
@@ -916,7 +916,7 @@ describe('StoreService: store list with waypoints and zones', () => {
     const oql = mockOQL()
 
     const qb = query(oql, store)
-      .project('id', 'name', 'color', 'enabled', 'radiusBound', 'allowTripOutsideRadius',
+      .select('id', 'name', 'color', 'enabled', 'radiusBound', 'allowTripOutsideRadius',
         'autoDispatchEnabled', 'autoDispatchScheduledTripEnabled',
         'overbookingPreventionEnabled', 'tripOptimizationHeuristic',
         'createdAt', 'liveTVShortUrl', 'liveTVDescription', {
@@ -926,7 +926,7 @@ describe('StoreService: store list with waypoints and zones', () => {
           }],
           zones: ['id', 'geometry', 'color', 'restricted'],
         })
-      .select(
+      .where(
         and(
           eq(store.enabled, true),
           exists(store.users, eq(user.id, 'user-1')),
@@ -983,13 +983,13 @@ describe('CustomerService: customer find with search', () => {
     const oql = mockOQL()
 
     const qb = query(oql, customer)
-      .project('id', 'enabled', 'firstName', 'lastName', 'email', 'language', 'companyName', 'phoneNumber', 'smsEnabled', 'createdAt', {
+      .select('id', 'enabled', 'firstName', 'lastName', 'email', 'language', 'companyName', 'phoneNumber', 'smsEnabled', 'createdAt', {
         store: ['id', 'name'],
         createdBy: ['id', 'firstName', 'lastName'],
         updatedBy: ['id', 'firstName', 'lastName'],
         places: ['id', 'address', 'isFavorite'],
       })
-      .select(
+      .where(
         and(
           inList(customer.store, ['s1', 's2']),
           eq(customer.enabled, true),
@@ -1043,12 +1043,12 @@ describe('VehicleService: vehicle find with coordinates', () => {
     const oql = mockOQL()
 
     const qb = query(oql, vehicle)
-      .project('id', 'type', 'enabled', 'seats', 'make', 'model', 'description', 'color', 'licensePlate', 'createdAt', {
+      .select('id', 'type', 'enabled', 'seats', 'make', 'model', 'description', 'color', 'licensePlate', 'createdAt', {
         driver: ['id', 'firstName', 'lastName'],
         store: ['id', 'name', 'color'],
         vehicleCoordinate: ['id', 'latitude', 'longitude', 'closestRoadLatitude', 'closestRoadLongitude', 'altitude', 'accuracy', 'altitudeAccuracy', 'heading', 'speed', 'createdAt', 'storeDistance', 'storeDuration'],
       })
-      .select(
+      .where(
         and(
           inList(vehicle.store, ['s1', 's2']),
           eq(vehicle.enabled, true),

@@ -159,25 +159,25 @@ type AssertTrue<T extends true> = T
 {
   const oql = mockOQL()
 
-  // Invalid field name in projection
+  // Invalid field name in selection
   // @ts-expect-error 'nonexistent' is not a field of user
-  query(oql, user).project('id', 'nonexistent')
+  query(oql, user).select('id', 'nonexistent')
 
   // Misspelled field name
   // @ts-expect-error 'fistName' is not a field of user
-  query(oql, user).project('fistName')
+  query(oql, user).select('fistName')
 
-  // Relation name used as scalar in projection
+  // Relation name used as scalar in selection
   // @ts-expect-error 'account' is a relation, not a scalar key
-  query(oql, user).project('account')
+  query(oql, user).select('account')
 
-  // Invalid field inside relation projection
+  // Invalid field inside relation selection
   // @ts-expect-error 'nonexistent' is not a field of account
-  query(oql, user).project('id', { account: ['id', 'nonexistent'] })
+  query(oql, user).select('id', { account: ['id', 'nonexistent'] })
 
-  // Invalid relation name in projection object
+  // Invalid relation name in selection object
   // @ts-expect-error 'foobar' is not a relation of user
-  query(oql, user).project('id', { foobar: ['id'] })
+  query(oql, user).select('id', { foobar: ['id'] })
 
   // Wrong value type: boolean field vs string
   // @ts-expect-error enabled is boolean, not string
@@ -232,10 +232,10 @@ type AssertTrue<T extends true> = T
 // COMBINED TESTS — every test checks BOTH type inference AND query
 // ═══════════════════════════════════════════════════════════════════
 
-describe('simple projections', () => {
+describe('simple selections', () => {
   it('three scalar fields', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', 'firstName', 'lastName')
+    const qb = query(oql, user).select('id', 'firstName', 'lastName')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; firstName: string; lastName: string }>>
@@ -247,7 +247,7 @@ describe('simple projections', () => {
 
   it('single scalar field', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('email')
+    const qb = query(oql, user).select('email')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { email: string }>>
@@ -256,7 +256,7 @@ describe('simple projections', () => {
     assert.equal(oql.calls[0].query, 'user {email}')
   })
 
-  it('no projection returns all scalar fields', async () => {
+  it('no selection returns all scalar fields', async () => {
     const oql = mockOQL()
     const qb = query(oql, account)
 
@@ -271,7 +271,7 @@ describe('simple projections', () => {
 
   it('nullable scalar includes null in type', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', 'lastLoginAt')
+    const qb = query(oql, user).select('id', 'lastLoginAt')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; lastLoginAt: Date | null }>>
@@ -282,7 +282,7 @@ describe('simple projections', () => {
 
   it('enum field infers union type', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', 'role')
+    const qb = query(oql, user).select('id', 'role')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; role: Role }>>
@@ -293,7 +293,7 @@ describe('simple projections', () => {
 
   it('integer field infers number', async () => {
     const oql = mockOQL()
-    const qb = query(oql, trip).project('id', 'seats')
+    const qb = query(oql, trip).select('id', 'seats')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; seats: number }>>
@@ -304,7 +304,7 @@ describe('simple projections', () => {
 
   it('float field infers number', async () => {
     const oql = mockOQL()
-    const qb = query(oql, place).project('latitude', 'longitude')
+    const qb = query(oql, place).select('latitude', 'longitude')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { latitude: number; longitude: number }>>
@@ -315,7 +315,7 @@ describe('simple projections', () => {
 
   it('textArray field infers string[] | null', async () => {
     const oql = mockOQL()
-    const qb = query(oql, customer).project('id', 'tags')
+    const qb = query(oql, customer).select('id', 'tags')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; tags: string[] | null }>>
@@ -326,7 +326,7 @@ describe('simple projections', () => {
 
   it('json field infers unknown | null', async () => {
     const oql = mockOQL()
-    const qb = query(oql, customer).project('id', 'metadata')
+    const qb = query(oql, customer).select('id', 'metadata')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; metadata: unknown }>>
@@ -337,7 +337,7 @@ describe('simple projections', () => {
 
   it('nullable integer field', async () => {
     const oql = mockOQL()
-    const qb = query(oql, vehicle).project('id', 'year')
+    const qb = query(oql, vehicle).select('id', 'year')
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; year: number | null }>>
@@ -360,10 +360,10 @@ describe('simple projections', () => {
   })
 })
 
-describe('relation projections', () => {
+describe('relation selections', () => {
   it('manyToOne (non-nullable) returns object', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', { account: ['id', 'name'] })
+    const qb = query(oql, user).select('id', { account: ['id', 'name'] })
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; account: { id: string; name: string } }>>
@@ -374,7 +374,7 @@ describe('relation projections', () => {
 
   it('manyToOne (nullable) returns object | null', async () => {
     const oql = mockOQL()
-    const qb = query(oql, vehicle).project('id', { driver: ['id', 'firstName'] })
+    const qb = query(oql, vehicle).select('id', { driver: ['id', 'firstName'] })
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<
@@ -387,7 +387,7 @@ describe('relation projections', () => {
 
   it('oneToMany returns array', async () => {
     const oql = mockOQL()
-    const qb = query(oql, store).project('id', { vehicles: ['id', 'make', 'model'] })
+    const qb = query(oql, store).select('id', { vehicles: ['id', 'make', 'model'] })
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<
@@ -400,7 +400,7 @@ describe('relation projections', () => {
 
   it('manyToMany returns array', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', { stores: ['id', 'name'] })
+    const qb = query(oql, user).select('id', { stores: ['id', 'name'] })
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { id: string; stores: { id: string; name: string }[] }>>
@@ -411,7 +411,7 @@ describe('relation projections', () => {
 
   it('oneToOne (nullable) returns object | null', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', { vehicle: ['id', 'make', 'model'] })
+    const qb = query(oql, user).select('id', { vehicle: ['id', 'make', 'model'] })
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<
@@ -422,9 +422,9 @@ describe('relation projections', () => {
     assert.equal(oql.calls[0].query, 'user {id vehicle {id make model}}')
   })
 
-  it('multiple relations in one projection object', async () => {
+  it('multiple relations in one selection object', async () => {
     const oql = mockOQL()
-    const qb = query(oql, trip).project('id', 'state', {
+    const qb = query(oql, trip).select('id', 'state', {
       vehicle: ['id', 'make'],
       store: ['id', 'name'],
       customer: ['id', 'firstName'],
@@ -451,9 +451,9 @@ describe('relation projections', () => {
     )
   })
 
-  it('relation-only projection (no scalars)', async () => {
+  it('relation-only selection (no scalars)', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project({ stores: ['id'] })
+    const qb = query(oql, user).select({ stores: ['id'] })
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<AssertEqual<Result, { stores: { id: string }[] }>>
@@ -464,7 +464,7 @@ describe('relation projections', () => {
 
   it('two-level nesting: user → stores → place', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', {
+    const qb = query(oql, user).select('id', {
       stores: ['id', 'name', { place: ['latitude', 'longitude'] }],
     })
 
@@ -489,7 +489,7 @@ describe('relation projections', () => {
 
   it('three-level nesting: store → trips → customer → places', async () => {
     const oql = mockOQL()
-    const qb = query(oql, store).project('id', 'name', {
+    const qb = query(oql, store).select('id', 'name', {
       trips: ['id', 'state', { customer: ['id', 'firstName', { places: ['id', 'address'] }] }],
     })
 
@@ -522,7 +522,7 @@ describe('relation projections', () => {
 
   it('three-level nesting: user → stores → vehicles → trips', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', {
+    const qb = query(oql, user).select('id', {
       stores: ['id', { vehicles: ['id', 'make', { trips: ['id', 'state'] }] }],
     })
 
@@ -553,7 +553,7 @@ describe('relation projections', () => {
 
   it('mixed nullable and non-nullable relations in deep nesting', async () => {
     const oql = mockOQL()
-    const qb = query(oql, trip).project('id', {
+    const qb = query(oql, trip).select('id', {
       vehicle: ['id', { driver: ['id', 'firstName'] }],
       store: ['id', { place: ['latitude', 'longitude', 'address'] }],
     })
@@ -587,7 +587,7 @@ describe('relation projections', () => {
 describe('execution methods', () => {
   it('.one() calls queryOne and returns T | undefined', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id', 'firstName').select(eq(user.id, 'abc'))
+    const qb = query(oql, user).select('id', 'firstName').where(eq(user.id, 'abc'))
 
     type Result = Awaited<ReturnType<typeof qb.one>>
     type _ = AssertTrue<AssertEqual<Result, { id: string; firstName: string } | undefined>>
@@ -599,7 +599,7 @@ describe('execution methods', () => {
 
   it('.many() calls queryMany and returns T[]', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).project('id')
+    const qb = query(oql, user).select('id')
 
     type Result = Awaited<ReturnType<typeof qb.many>>
     type _ = AssertTrue<AssertEqual<Result, { id: string }[]>>
@@ -610,7 +610,7 @@ describe('execution methods', () => {
 
   it('.count() calls count and returns number', async () => {
     const oql = mockOQL()
-    const qb = query(oql, user).select(eq(user.enabled, true))
+    const qb = query(oql, user).where(eq(user.enabled, true))
 
     type Result = Awaited<ReturnType<typeof qb.count>>
     type _ = AssertTrue<AssertEqual<Result, number>>
@@ -624,38 +624,38 @@ describe('execution methods', () => {
 describe('filters', () => {
   it('eq', async () => {
     const oql = mockOQL()
-    await query(oql, account).project('id').select(eq(account.id, 'abc')).one()
+    await query(oql, account).select('id').where(eq(account.id, 'abc')).one()
     assert.equal(oql.calls[0].query, 'account {id} [id = :p0]')
     assert.deepEqual(oql.calls[0].params, { p0: 'abc' })
   })
 
   it('ne', async () => {
     const oql = mockOQL()
-    await query(oql, trip).project('id').select(ne(trip.state, 'CANCELLED')).many()
+    await query(oql, trip).select('id').where(ne(trip.state, 'CANCELLED')).many()
     assert.equal(oql.calls[0].query, 'trip {id} [state != :p0]')
     assert.deepEqual(oql.calls[0].params, { p0: 'CANCELLED' })
   })
 
   it('gt / gte / lt / lte', async () => {
     const oql = mockOQL()
-    await query(oql, trip).project('id').select(gt(trip.seats, 3)).many()
+    await query(oql, trip).select('id').where(gt(trip.seats, 3)).many()
     assert.equal(oql.calls[0].query, 'trip {id} [seats > :p0]')
 
-    await query(oql, trip).project('id').select(gte(trip.seats, 1)).many()
+    await query(oql, trip).select('id').where(gte(trip.seats, 1)).many()
     assert.equal(oql.calls[1].query, 'trip {id} [seats >= :p0]')
 
-    await query(oql, trip).project('id').select(lt(trip.seats, 10)).many()
+    await query(oql, trip).select('id').where(lt(trip.seats, 10)).many()
     assert.equal(oql.calls[2].query, 'trip {id} [seats < :p0]')
 
-    await query(oql, trip).project('id').select(lte(trip.seats, 5)).many()
+    await query(oql, trip).select('id').where(lte(trip.seats, 5)).many()
     assert.equal(oql.calls[3].query, 'trip {id} [seats <= :p0]')
   })
 
   it('and', async () => {
     const oql = mockOQL()
     await query(oql, user)
-      .project('id')
-      .select(and(eq(user.enabled, true), eq(user.role, 'ADMIN')))
+      .select('id')
+      .where(and(eq(user.enabled, true), eq(user.role, 'ADMIN')))
       .many()
     assert.equal(oql.calls[0].query, 'user {id} [enabled = :p0 AND role = :p1]')
     assert.deepEqual(oql.calls[0].params, { p0: true, p1: 'ADMIN' })
@@ -664,30 +664,30 @@ describe('filters', () => {
   it('or wraps in parens', async () => {
     const oql = mockOQL()
     await query(oql, user)
-      .project('id')
-      .select(or(eq(user.role, 'ADMIN'), eq(user.role, 'DISPATCHER')))
+      .select('id')
+      .where(or(eq(user.role, 'ADMIN'), eq(user.role, 'DISPATCHER')))
       .many()
     assert.equal(oql.calls[0].query, 'user {id} [(role = :p0 OR role = :p1)]')
   })
 
   it('not', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').select(not(eq(user.enabled, false))).many()
+    await query(oql, user).select('id').where(not(eq(user.enabled, false))).many()
     assert.equal(oql.calls[0].query, 'user {id} [NOT (enabled = :p0)]')
   })
 
   it('nested and/or', async () => {
     const oql = mockOQL()
     await query(oql, user)
-      .project('id')
-      .select(and(eq(user.enabled, true), or(eq(user.role, 'ADMIN'), eq(user.role, 'DISPATCHER'))))
+      .select('id')
+      .where(and(eq(user.enabled, true), or(eq(user.role, 'ADMIN'), eq(user.role, 'DISPATCHER'))))
       .many()
     assert.equal(oql.calls[0].query, 'user {id} [enabled = :p0 AND (role = :p1 OR role = :p2)]')
   })
 
   it('inList', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').select(inList(user.role, ['ADMIN', 'DISPATCHER'])).many()
+    await query(oql, user).select('id').where(inList(user.role, ['ADMIN', 'DISPATCHER'])).many()
     assert.equal(oql.calls[0].query, 'user {id} [role IN :p0]')
     assert.deepEqual(oql.calls[0].params, { p0: ['ADMIN', 'DISPATCHER'] })
   })
@@ -695,21 +695,21 @@ describe('filters', () => {
   it('notInList', async () => {
     const oql = mockOQL()
     await query(oql, trip)
-      .project('id')
-      .select(notInList(trip.state, ['COMPLETED', 'CANCELLED']))
+      .select('id')
+      .where(notInList(trip.state, ['COMPLETED', 'CANCELLED']))
       .many()
     assert.equal(oql.calls[0].query, 'trip {id} [state NOT IN :p0]')
   })
 
   it('like', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').select(like(user.email, '%@example.com')).many()
+    await query(oql, user).select('id').where(like(user.email, '%@example.com')).many()
     assert.equal(oql.calls[0].query, 'user {id} [email LIKE :p0]')
   })
 
   it('ilike', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').select(ilike(user.firstName, '%john%')).many()
+    await query(oql, user).select('id').where(ilike(user.firstName, '%john%')).many()
     assert.equal(oql.calls[0].query, 'user {id} [firstName ILIKE :p0]')
     assert.deepEqual(oql.calls[0].params, { p0: '%john%' })
   })
@@ -718,29 +718,29 @@ describe('filters', () => {
     const oql = mockOQL()
     const start = new Date('2026-01-01')
     const end = new Date('2026-02-01')
-    await query(oql, user).project('id').select(between(user.lastLoginAt, start, end)).many()
+    await query(oql, user).select('id').where(between(user.lastLoginAt, start, end)).many()
     assert.equal(oql.calls[0].query, 'user {id} [lastLoginAt BETWEEN :p0 AND :p1]')
     assert.deepEqual(oql.calls[0].params, { p0: start, p1: end })
   })
 
   it('isNull', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').select(isNull(user.lastLoginAt)).many()
+    await query(oql, user).select('id').where(isNull(user.lastLoginAt)).many()
     assert.equal(oql.calls[0].query, 'user {id} [lastLoginAt IS NULL]')
     assert.deepEqual(oql.calls[0].params, {})
   })
 
   it('isNotNull', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').select(isNotNull(user.lastLoginAt)).many()
+    await query(oql, user).select('id').where(isNotNull(user.lastLoginAt)).many()
     assert.equal(oql.calls[0].query, 'user {id} [lastLoginAt IS NOT NULL]')
   })
 
   it('exists with inner filter', async () => {
     const oql = mockOQL()
     await query(oql, user)
-      .project('id')
-      .select(exists(user.stores, inList(store.id, ['s1', 's2'])))
+      .select('id')
+      .where(exists(user.stores, inList(store.id, ['s1', 's2'])))
       .many()
     assert.equal(oql.calls[0].query, 'user {id} [EXISTS(stores [id IN :p0])]')
     assert.deepEqual(oql.calls[0].params, { p0: ['s1', 's2'] })
@@ -748,7 +748,7 @@ describe('filters', () => {
 
   it('exists without inner filter', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').select(exists(user.stores)).many()
+    await query(oql, user).select('id').where(exists(user.stores)).many()
     assert.equal(oql.calls[0].query, 'user {id} [EXISTS(stores)]')
   })
 })
@@ -756,37 +756,37 @@ describe('filters', () => {
 describe('ordering and pagination', () => {
   it('single orderBy desc', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').orderBy(desc(user.lastLoginAt)).many()
+    await query(oql, user).select('id').orderBy(desc(user.lastLoginAt)).many()
     assert.equal(oql.calls[0].query, 'user {id} <lastLoginAt DESC>')
   })
 
   it('multiple orderBy', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').orderBy(asc(user.lastName), asc(user.firstName)).many()
+    await query(oql, user).select('id').orderBy(asc(user.lastName), asc(user.firstName)).many()
     assert.equal(oql.calls[0].query, 'user {id} <lastName ASC, firstName ASC>')
   })
 
   it('mixed asc/desc', async () => {
     const oql = mockOQL()
-    await query(oql, trip).project('id').orderBy(desc(trip.createdAt), asc(trip.state)).many()
+    await query(oql, trip).select('id').orderBy(desc(trip.createdAt), asc(trip.state)).many()
     assert.equal(oql.calls[0].query, 'trip {id} <createdAt DESC, state ASC>')
   })
 
   it('limit only', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').limit(10).many()
+    await query(oql, user).select('id').limit(10).many()
     assert.equal(oql.calls[0].query, 'user {id} |, 10|')
   })
 
   it('offset only', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').offset(20).many()
+    await query(oql, user).select('id').offset(20).many()
     assert.equal(oql.calls[0].query, 'user {id} |20|')
   })
 
   it('limit and offset', async () => {
     const oql = mockOQL()
-    await query(oql, user).project('id').limit(10).offset(20).many()
+    await query(oql, user).select('id').limit(10).offset(20).many()
     assert.equal(oql.calls[0].query, 'user {id} |20, 10|')
   })
 })
@@ -795,8 +795,8 @@ describe('toOQL', () => {
   it('returns query string and params without executing', () => {
     const oql = mockOQL()
     const { queryStr, params } = query(oql, user)
-      .project('id', 'firstName')
-      .select(eq(user.enabled, true))
+      .select('id', 'firstName')
+      .where(eq(user.enabled, true))
       .toOQL()
     assert.equal(queryStr, 'user {id firstName} [enabled = :p0]')
     assert.deepEqual(params, { p0: true })
@@ -811,11 +811,11 @@ describe('complex end-to-end queries', () => {
     const search = '%john%'
 
     const qb = query(oql, user)
-      .project('id', 'firstName', 'lastName', 'role', 'email', {
+      .select('id', 'firstName', 'lastName', 'role', 'email', {
         account: ['id', 'name', 'plan'],
         stores: ['id', 'name'],
       })
-      .select(
+      .where(
         and(
           exists(user.stores, inList(store.id, storeIds)),
           eq(user.enabled, true),
@@ -861,12 +861,12 @@ describe('complex end-to-end queries', () => {
     const oql = mockOQL()
 
     const qb = query(oql, trip)
-      .project('id', 'state', 'seats', 'notes', 'createdAt', {
+      .select('id', 'state', 'seats', 'notes', 'createdAt', {
         vehicle: ['id', 'make', 'model', { driver: ['id', 'firstName', 'lastName', 'email'] }],
         store: ['id', 'name', 'color', { place: ['latitude', 'longitude', 'address'] }],
         customer: ['id', 'firstName', 'lastName', 'phone', { places: ['id', 'address'] }],
       })
-      .select(
+      .where(
         and(
           inList(trip.state, ['REQUESTED', 'CONFIRMED', 'EN_ROUTE']),
           isNotNull(trip.vehicle),
@@ -924,7 +924,7 @@ describe('complex end-to-end queries', () => {
     const oql = mockOQL()
 
     const qb = query(oql, store)
-      .project('id', 'name', 'enabled', {
+      .select('id', 'name', 'enabled', {
         place: ['latitude', 'longitude'],
         vehicles: [
           'id',
@@ -936,7 +936,7 @@ describe('complex end-to-end queries', () => {
         ],
         users: ['id', 'firstName', 'lastName', 'role', 'enabled'],
       })
-      .select(and(eq(store.enabled, true), inList(store.id, ['s1', 's2', 's3'])))
+      .where(and(eq(store.enabled, true), inList(store.id, ['s1', 's2', 's3'])))
       .orderBy(asc(store.name))
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
@@ -980,11 +980,11 @@ describe('complex end-to-end queries', () => {
     const hourAgo = new Date('2026-03-11T11:00:00Z')
 
     const qb = query(oql, trip)
-      .project('id', 'state', 'seats', 'createdAt', {
+      .select('id', 'state', 'seats', 'createdAt', {
         customer: ['id', 'firstName', 'lastName', 'phone'],
         store: ['id', 'name'],
       })
-      .select(
+      .where(
         and(
           isNull(trip.vehicle),
           inList(trip.state, ['REQUESTED']),
@@ -1028,12 +1028,12 @@ describe('complex end-to-end queries', () => {
     const oql = mockOQL()
 
     const qb = query(oql, user)
-      .project('id', 'firstName', 'lastName', 'email', 'role', 'enabled', 'lastLoginAt', {
+      .select('id', 'firstName', 'lastName', 'email', 'role', 'enabled', 'lastLoginAt', {
         account: ['id', 'name', 'enabled', 'plan', 'createdAt'],
         stores: ['id', 'name', 'enabled', 'color', { place: ['id', 'latitude', 'longitude', 'address'] }],
         vehicle: ['id', 'make', 'model', 'year', 'active'],
       })
-      .select(eq(user.id, 'user-123'))
+      .where(eq(user.id, 'user-123'))
 
     type Result = Awaited<ReturnType<typeof qb.one>>
     type _ = AssertTrue<
@@ -1091,12 +1091,12 @@ describe('complex end-to-end queries', () => {
     // user has: manyToOne (account), manyToMany (stores), oneToOne (vehicle)
     // store has: oneToMany (vehicles, trips)
     const qb = query(oql, user)
-      .project('id', 'firstName', 'role', {
+      .select('id', 'firstName', 'role', {
         account: ['id', 'name'],
         stores: ['id', 'name', { vehicles: ['id', 'make', 'active'] }],
         vehicle: ['id', 'make', 'model', { store: ['id', 'name'] }],
       })
-      .select(
+      .where(
         and(
           eq(user.enabled, true),
           exists(user.stores, eq(store.enabled, true)),
@@ -1148,7 +1148,7 @@ describe('complex end-to-end queries', () => {
     // trip → vehicle (nullable) → driver (nullable) → account → (scalars)
     // trip → store → place → (scalars)
     const qb = query(oql, trip)
-      .project('id', 'state', {
+      .select('id', 'state', {
         vehicle: ['id', {
           driver: ['id', 'firstName', {
             account: ['id', 'name', 'plan'],
@@ -1159,7 +1159,7 @@ describe('complex end-to-end queries', () => {
           place: ['id', 'latitude', 'longitude', 'address'],
         }],
       })
-      .select(eq(trip.id, 't-1'))
+      .where(eq(trip.id, 't-1'))
 
     type Result = Awaited<ReturnType<typeof qb.one>>
     type _ = AssertTrue<
@@ -1204,11 +1204,11 @@ describe('complex end-to-end queries', () => {
     // store appears twice: once through trip.store, once through trip.vehicle.store
     // place appears through both store paths
     const qb = query(oql, trip)
-      .project('id', {
+      .select('id', {
         store: ['id', 'name', { place: ['latitude', 'longitude'] }],
         vehicle: ['id', { store: ['id', 'name', { place: ['latitude', 'longitude'] }] }],
       })
-      .select(inList(trip.state, ['REQUESTED', 'CONFIRMED']))
+      .where(inList(trip.state, ['REQUESTED', 'CONFIRMED']))
 
     type Result = Awaited<ReturnType<typeof qb.many>>[number]
     type _ = AssertTrue<
@@ -1246,7 +1246,7 @@ describe('complex end-to-end queries', () => {
     // store → trips (oneToMany) → customer → places (manyToMany)
     // store → users (manyToMany) with scalar selection
     const qb = query(oql, store)
-      .project('id', 'name', {
+      .select('id', 'name', {
         trips: ['id', 'state', 'seats', {
           customer: ['id', 'firstName', 'phone', {
             places: ['id', 'latitude', 'longitude'],
@@ -1254,7 +1254,7 @@ describe('complex end-to-end queries', () => {
         }],
         users: ['id', 'firstName', 'lastName', 'email', 'role'],
       })
-      .select(
+      .where(
         and(
           eq(store.enabled, true),
           exists(store.trips, inList(trip.state, ['REQUESTED', 'EN_ROUTE'])),
@@ -1311,7 +1311,7 @@ describe('complex end-to-end queries', () => {
     // vehicle → store (manyToOne) → users (manyToMany)
     // vehicle → trips (oneToMany) → customer
     const qb = query(oql, vehicle)
-      .project('id', 'make', 'model', 'active', {
+      .select('id', 'make', 'model', 'active', {
         driver: ['id', 'firstName', 'lastName', {
           stores: ['id', 'name'],
         }],
@@ -1323,7 +1323,7 @@ describe('complex end-to-end queries', () => {
           customer: ['id', 'firstName', 'lastName'],
         }],
       })
-      .select(
+      .where(
         and(
           eq(vehicle.active, true),
           isNotNull(vehicle.driver),
@@ -1381,7 +1381,7 @@ describe('complex end-to-end queries', () => {
     // trip → customer → places (manyToMany)
     // trip → store → vehicles → driver (nullable)
     const qb = query(oql, trip)
-      .project('id', 'state', 'createdAt', {
+      .select('id', 'state', 'createdAt', {
         customer: ['id', 'firstName', 'lastName', 'phone', 'tags', {
           places: ['id', 'latitude', 'longitude', 'address'],
         }],
@@ -1391,7 +1391,7 @@ describe('complex end-to-end queries', () => {
           }],
         }],
       })
-      .select(
+      .where(
         and(
           inList(trip.state, ['CONFIRMED', 'EN_ROUTE']),
           gt(trip.seats, 0),

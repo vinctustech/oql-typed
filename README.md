@@ -67,24 +67,24 @@ const oql = new OQL(dm, host, port, database, username, password)
 ```typescript
 import { query, eq, and, inList, ilike, or, exists, desc } from '@vinctus/oql-typed'
 
-// Return type is inferred from the projection — no manual type parameter
+// Return type is inferred from the selection — no manual type parameter
 const result = await query(oql, user)
-  .project('id', 'firstName', 'lastName', { account: ['id', 'name'] })
-  .select(eq(user.id, userId))
+  .select('id', 'firstName', 'lastName', { account: ['id', 'name'] })
+  .where(eq(user.id, userId))
   .one()
 // => { id: string, firstName: string, lastName: string, account: { id: string, name: string } } | undefined
 
-// No projection — returns all scalar fields
+// No selection — returns all scalar fields
 const accounts = await query(oql, account).many()
 // => { id: string, name: string, enabled: boolean, plan: string }[]
 
 // Complex query with nested relations, filtering, ordering, pagination
 const users = await query(oql, user)
-  .project('id', 'firstName', 'lastName', 'role', {
+  .select('id', 'firstName', 'lastName', 'role', {
     stores: ['id', 'name'],
     vehicle: ['id', 'make', 'model'],
   })
-  .select(and(
+  .where(and(
     exists(user.stores, inList(store.id, storeIds)),
     eq(user.enabled, true),
     or(ilike(user.firstName, `%${search}%`), ilike(user.lastName, `%${search}%`)),
@@ -99,7 +99,7 @@ const users = await query(oql, user)
 
 ```typescript
 // Misspelled field — compile error
-query(oql, user).project('id', 'fistName')
+query(oql, user).select('id', 'fistName')
 
 // Wrong type in filter — compile error (enabled is boolean, not string)
 eq(user.enabled, 'yes')
@@ -108,7 +108,7 @@ eq(user.enabled, 'yes')
 eq(user.role, 'SUPERADMIN')
 
 // Accessing a field not in the projection — compile error
-const u = await query(oql, user).project('id').one()
+const u = await query(oql, user).select('id').one()
 u?.firstName  // Property 'firstName' does not exist
 
 // Non-string field with ilike — compile error
@@ -136,8 +136,8 @@ Column modifiers: `.primaryKey()`, `.nullable()`, `.column('db_alias')`
 
 ```typescript
 query(oql, entity)
-  .project(...)           // Optional — select fields and relations
-  .select(filter)         // Optional — filter rows
+  .select(...)           // Optional — select fields and relations
+  .where(filter)          // Optional — filter rows
   .orderBy(asc(f), ...)   // Optional — sort
   .limit(n)               // Optional
   .offset(n)              // Optional
@@ -147,14 +147,14 @@ query(oql, entity)
   .toOQL()                // Return { queryStr, params } without executing
 ```
 
-### Projection
+### Selection
 
 Scalars as string args, relations as objects with arrays:
 
 ```typescript
-.project('id', 'name')
-.project('id', { account: ['id', 'name'] })
-.project('id', { stores: ['id', 'name', { place: ['lat', 'lng'] }] })
+.select('id', 'name')
+.select('id', { account: ['id', 'name'] })
+.select('id', { stores: ['id', 'name', { place: ['lat', 'lng'] }] })
 ```
 
 ### Operators
