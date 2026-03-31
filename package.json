@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts",
+    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts src/integration.test.ts",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -18,9 +18,15 @@
     "oql-typed-codegen": "dist/cli.js"
   },
   "peerDependencies": {
-    "@vinctus/oql": ">=0.1.0"
+    "@vinctus/oql-pg": ">=1.4.0",
+    "@vinctus/oql-petradb": ">=1.4.0"
+  },
+  "peerDependenciesMeta": {
+    "@vinctus/oql-pg": { "optional": true },
+    "@vinctus/oql-petradb": { "optional": true }
   },
   "devDependencies": {
+    "@vinctus/oql-petradb": "file:../oql-SC-1432/petradb/npm",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },

@@ -1487,7 +1487,7 @@ describe('generateDM', () => {
 
   it('generates enum', () => {
     const dm = generateDM(user)
-    assert.ok(dm.includes("enum Role { 'ADMIN' 'DISPATCHER' 'DRIVER' }"))
+    assert.ok(dm.includes('enum Role { ADMIN DISPATCHER DRIVER }'))
   })
 
   it('generates boolean as bool', () => {

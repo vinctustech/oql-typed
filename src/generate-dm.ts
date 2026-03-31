@@ -100,16 +100,47 @@ function collectEnums(entities: EntityInstance<any>[]): Map<string, readonly str
   return enums
 }
 
+// Collect junction table definitions from manyToMany relations
+function collectJunctions(entities: EntityInstance<any>[]): Map<string, { from: EntityInstance<any>; fromField: string; to: EntityInstance<any> }> {
+  const junctions = new Map<string, { from: EntityInstance<any>; fromField: string; to: EntityInstance<any> }>()
+
+  for (const ent of entities) {
+    for (const [fieldName, builder] of Object.entries(ent.definition)) {
+      const b = builder as ColumnBuilder<any, any, any> | RelationBuilder<any, any, any>
+      if (b.kind === 'relation') {
+        const rel = b as RelationBuilder<any, any, any>
+        if (rel.relationKind === 'manyToMany' && rel.options.junction) {
+          const junction = rel.options.junction
+          if (!junctions.has(junction)) {
+            const target = rel.target()
+            junctions.set(junction, { from: ent, fromField: fieldName, to: target })
+          }
+        }
+      }
+    }
+  }
+
+  return junctions
+}
+
 export function generateDM(...entities: EntityInstance<any>[]): string {
   const enums = collectEnums(entities)
+  const junctions = collectJunctions(entities)
   const parts: string[] = []
 
   for (const [name, values] of enums) {
-    parts.push(`enum ${name} { ${values.map((v) => `'${v}'`).join(' ')} }`)
+    parts.push(`enum ${name} { ${values.join(' ')} }`)
   }
 
   for (const entity of entities) {
     parts.push(entityToDM(entity))
+  }
+
+  // Generate junction table entities for manyToMany relations
+  for (const [junctionName, { from, to }] of junctions) {
+    const fromCol = `${from.entityName} (${from.entityName}_id): ${from.entityName}`
+    const toCol = `${to.entityName} (${to.entityName}_id): ${to.entityName}`
+    parts.push(`entity ${junctionName} {\n  ${fromCol}\n  ${toCol}\n}`)
   }
 
   return parts.join('\n\n')
