@@ -15,8 +15,6 @@ import {
   boolean_ as boolean,
   timestamp,
   float,
-  json,
-  textArray,
   manyToOne,
   oneToMany,
   manyToMany,
@@ -138,48 +136,48 @@ let oql: OQL_PETRADB
 
 const dm = generateDM(account, place, store, user, vehicle, trip, customer)
 
-// Fixed UUIDs for deterministic test data
+// Fixed v4 UUIDs for deterministic test data
 const ID = {
-  a1: 'a0000000-0000-0000-0000-000000000001',
-  p1: 'b0000000-0000-0000-0000-000000000001',
-  p2: 'b0000000-0000-0000-0000-000000000002',
-  s1: 'c0000000-0000-0000-0000-000000000001',
-  s2: 'c0000000-0000-0000-0000-000000000002',
-  u1: 'd0000000-0000-0000-0000-000000000001',
-  u2: 'd0000000-0000-0000-0000-000000000002',
-  u3: 'd0000000-0000-0000-0000-000000000003',
-  v1: 'e0000000-0000-0000-0000-000000000001',
-  v2: 'e0000000-0000-0000-0000-000000000002',
-  c1: 'f0000000-0000-0000-0000-000000000001',
-  c2: 'f0000000-0000-0000-0000-000000000002',
-  t1: '10000000-0000-0000-0000-000000000001',
-  t2: '10000000-0000-0000-0000-000000000002',
-  t3: '10000000-0000-0000-0000-000000000003',
-  t4: '10000000-0000-0000-0000-000000000004',
+  a1: 'a0000000-0000-4000-8000-000000000001',
+  p1: 'b0000000-0000-4000-8000-000000000001',
+  p2: 'b0000000-0000-4000-8000-000000000002',
+  s1: 'c0000000-0000-4000-8000-000000000001',
+  s2: 'c0000000-0000-4000-8000-000000000002',
+  u1: 'd0000000-0000-4000-8000-000000000001',
+  u2: 'd0000000-0000-4000-8000-000000000002',
+  u3: 'd0000000-0000-4000-8000-000000000003',
+  v1: 'e0000000-0000-4000-8000-000000000001',
+  v2: 'e0000000-0000-4000-8000-000000000002',
+  c1: 'f0000000-0000-4000-8000-000000000001',
+  c2: 'f0000000-0000-4000-8000-000000000002',
+  t1: '10000000-0000-4000-8000-000000000001',
+  t2: '10000000-0000-4000-8000-000000000002',
+  t3: '10000000-0000-4000-8000-000000000003',
+  t4: '10000000-0000-4000-8000-000000000004',
 }
 
 const seedSQL = `CREATE TABLE accounts (
-  id UUID AUTO PRIMARY KEY,
+  id UUID PRIMARY KEY,
   name TEXT NOT NULL,
   enabled BOOLEAN NOT NULL,
   plan TEXT NOT NULL,
   created_at TIMESTAMP NOT NULL
 );
 CREATE TABLE places (
-  id UUID AUTO PRIMARY KEY,
-  latitude FLOAT NOT NULL,
-  longitude FLOAT NOT NULL,
+  id UUID PRIMARY KEY,
+  latitude DOUBLE NOT NULL,
+  longitude DOUBLE NOT NULL,
   address TEXT
 );
 CREATE TABLE stores (
-  id UUID AUTO PRIMARY KEY,
+  id UUID PRIMARY KEY,
   name TEXT NOT NULL,
   enabled BOOLEAN NOT NULL,
   color TEXT NOT NULL,
   place_id UUID REFERENCES places(id)
 );
 CREATE TABLE users (
-  id UUID AUTO PRIMARY KEY,
+  id UUID PRIMARY KEY,
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -193,16 +191,16 @@ CREATE TABLE users_stores (
   store_id UUID REFERENCES stores(id)
 );
 CREATE TABLE vehicles (
-  id UUID AUTO PRIMARY KEY,
+  id UUID PRIMARY KEY,
   make TEXT NOT NULL,
   model TEXT NOT NULL,
-  year INT,
+  year INTEGER,
   active BOOLEAN NOT NULL,
   driver_id UUID REFERENCES users(id),
   store_id UUID REFERENCES stores(id)
 );
 CREATE TABLE customers (
-  id UUID AUTO PRIMARY KEY,
+  id UUID PRIMARY KEY,
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   phone TEXT NOT NULL
@@ -212,9 +210,9 @@ CREATE TABLE customers_places (
   place_id UUID REFERENCES places(id)
 );
 CREATE TABLE trips (
-  id UUID AUTO PRIMARY KEY,
+  id UUID PRIMARY KEY,
   state TEXT NOT NULL,
-  seats INT NOT NULL,
+  seats INTEGER NOT NULL,
   notes TEXT,
   created_at TIMESTAMP NOT NULL,
   vehicle_id UUID REFERENCES vehicles(id),
@@ -225,15 +223,11 @@ CREATE TABLE trips (
 INSERT INTO accounts (id, name, enabled, plan, created_at) VALUES
   ('${ID.a1}', 'Acme Corp', true, 'pro', '2024-01-01T00:00:00Z');
 
-INSERT INTO places (id, latitude, longitude, address) VALUES
-  ('${ID.p1}', 45.5, -73.6, '123 Main St');
-INSERT INTO places (id, latitude, longitude, address) VALUES
-  ('${ID.p2}', 45.6, -73.7, NULL);
+INSERT INTO places (id, latitude, longitude, address) VALUES ('${ID.p1}', 45.5, -73.6, '123 Main St');
+INSERT INTO places (id, latitude, longitude, address) VALUES ('${ID.p2}', 45.6, -73.7, NULL);
 
-INSERT INTO stores (id, name, enabled, color, place_id) VALUES
-  ('${ID.s1}', 'Downtown', true, '#ff0000', '${ID.p1}');
-INSERT INTO stores (id, name, enabled, color, place_id) VALUES
-  ('${ID.s2}', 'Airport', false, '#00ff00', '${ID.p2}');
+INSERT INTO stores (id, name, enabled, color, place_id) VALUES ('${ID.s1}', 'Downtown', true, '#ff0000', '${ID.p1}');
+INSERT INTO stores (id, name, enabled, color, place_id) VALUES ('${ID.s2}', 'Airport', false, '#00ff00', '${ID.p2}');
 
 INSERT INTO users (id, first_name, last_name, email, role, enabled, last_login_at, account_id) VALUES
   ('${ID.u1}', 'Alice', 'Smith', 'alice@example.com', 'ADMIN', true, '2024-06-15T00:00:00Z', '${ID.a1}');
@@ -251,10 +245,8 @@ INSERT INTO vehicles (id, make, model, year, active, driver_id, store_id) VALUES
 INSERT INTO vehicles (id, make, model, year, active, driver_id, store_id) VALUES
   ('${ID.v2}', 'Honda', 'Civic', NULL, false, NULL, '${ID.s1}');
 
-INSERT INTO customers (id, first_name, last_name, phone) VALUES
-  ('${ID.c1}', 'Dan', 'White', '555-0001');
-INSERT INTO customers (id, first_name, last_name, phone) VALUES
-  ('${ID.c2}', 'Eve', 'Black', '555-0002');
+INSERT INTO customers (id, first_name, last_name, phone) VALUES ('${ID.c1}', 'Dan', 'White', '555-0001');
+INSERT INTO customers (id, first_name, last_name, phone) VALUES ('${ID.c2}', 'Eve', 'Black', '555-0002');
 
 INSERT INTO customers_places (customer_id, place_id) VALUES ('${ID.c1}', '${ID.p1}');
 INSERT INTO customers_places (customer_id, place_id) VALUES ('${ID.c1}', '${ID.p2}');
