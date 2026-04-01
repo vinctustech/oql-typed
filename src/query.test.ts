@@ -912,7 +912,7 @@ describe('complex end-to-end queries', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'trip {id state seats notes createdAt vehicle {id make model driver {id firstName lastName email}} store {id name color place {latitude longitude address}} customer {id firstName lastName phone places {id address}}} [state IN :p0 AND vehicle IS NOT NULL AND seats > :p1] <createdAt DESC> |, 50|',
+      'trip {id state seats notes createdAt vehicle {id make model driver {id firstName lastName email}} store {id name color place {latitude longitude address}} customer {id firstName lastName phone places {id address}}} [state IN :p0 AND vehicle.id IS NOT NULL AND seats > :p1] <createdAt DESC> |, 50|',
     )
     assert.deepEqual(oql.calls[0].params, {
       p0: ['REQUESTED', 'CONFIRMED', 'EN_ROUTE'],
@@ -1014,7 +1014,7 @@ describe('complex end-to-end queries', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'trip {id state seats createdAt customer {id firstName lastName phone} store {id name}} [vehicle IS NULL AND state IN :p0 AND store IN :p1 AND createdAt BETWEEN :p2 AND :p3] <createdAt ASC> |0, 100|',
+      'trip {id state seats createdAt customer {id firstName lastName phone} store {id name}} [vehicle.id IS NULL AND state IN :p0 AND store.id IN :p1 AND createdAt BETWEEN :p2 AND :p3] <createdAt ASC> |0, 100|',
     )
     assert.deepEqual(oql.calls[0].params, {
       p0: ['REQUESTED'],
@@ -1367,7 +1367,7 @@ describe('complex end-to-end queries', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'vehicle {id make model active driver {id firstName lastName stores {id name}} store {id name users {id firstName role} place {latitude longitude}} trips {id state customer {id firstName lastName}}} [active = :p0 AND driver IS NOT NULL AND EXISTS(trips [state != :p1])] <make DESC, model ASC> |100, 50|',
+      'vehicle {id make model active driver {id firstName lastName stores {id name}} store {id name users {id firstName role} place {latitude longitude}} trips {id state customer {id firstName lastName}}} [active = :p0 AND driver.id IS NOT NULL AND EXISTS(trips [state != :p1])] <make DESC, model ASC> |100, 50|',
     )
     assert.deepEqual(oql.calls[0].params, {
       p0: true,
@@ -1439,7 +1439,7 @@ describe('complex end-to-end queries', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'trip {id state createdAt customer {id firstName lastName phone tags places {id latitude longitude address}} store {id name vehicles {id make active driver {id firstName}}}} [state IN :p0 AND seats > :p1 AND createdAt BETWEEN :p2 AND :p3 AND NOT (customer IS NULL)] <createdAt DESC>',
+      'trip {id state createdAt customer {id firstName lastName phone tags places {id latitude longitude address}} store {id name vehicles {id make active driver {id firstName}}}} [state IN :p0 AND seats > :p1 AND createdAt BETWEEN :p2 AND :p3 AND NOT (customer.id IS NULL)] <createdAt DESC>',
     )
   })
 })

@@ -456,7 +456,7 @@ describe('AutoDispatchService: scheduled trip vehicles', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'vehicle {id seats trips {id seats predictedDistance steps {id place {id latitude longitude}}}} [store = :p0 AND enabled = :p1]',
+      'vehicle {id seats trips {id seats predictedDistance steps {id place {id latitude longitude}}}} [store.id = :p0 AND enabled = :p1]',
     )
   })
 })
@@ -898,7 +898,7 @@ describe('ZoneService: trips without zones', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'trip {id state steps {id type place {id latitude longitude}}} [state IN :p0 AND store = :p1 AND zone IS NULL] <createdAt DESC> |, 1000|',
+      'trip {id state steps {id type place {id latitude longitude}}} [state IN :p0 AND store.id = :p1 AND zone.id IS NULL] <createdAt DESC> |, 1000|',
     )
     assert.deepEqual(oql.calls[0].params, {
       p0: ['REQUESTED', 'SCHEDULED'],
@@ -1030,7 +1030,7 @@ describe('CustomerService: customer find with search', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'customer {id enabled firstName lastName email language companyName phoneNumber smsEnabled createdAt store {id name} createdBy {id firstName lastName} updatedBy {id firstName lastName} places {id address isFavorite}} [store IN :p0 AND enabled = :p1 AND (firstName ILIKE :p2 OR lastName ILIKE :p3 OR phoneNumber ILIKE :p4)] <createdAt DESC> |0, 50|',
+      'customer {id enabled firstName lastName email language companyName phoneNumber smsEnabled createdAt store {id name} createdBy {id firstName lastName} updatedBy {id firstName lastName} places {id address isFavorite}} [store.id IN :p0 AND enabled = :p1 AND (firstName ILIKE :p2 OR lastName ILIKE :p3 OR phoneNumber ILIKE :p4)] <createdAt DESC> |0, 50|',
     )
   })
 })
@@ -1102,7 +1102,7 @@ describe('VehicleService: vehicle find with coordinates', () => {
     await qb.many()
     assert.equal(
       oql.calls[0].query,
-      'vehicle {id type enabled seats make model description color licensePlate createdAt driver {id firstName lastName} store {id name color} vehicleCoordinate {id latitude longitude closestRoadLatitude closestRoadLongitude altitude accuracy altitudeAccuracy heading speed createdAt storeDistance storeDuration}} [store IN :p0 AND enabled = :p1 AND (make ILIKE :p2 OR model ILIKE :p3 OR licensePlate ILIKE :p4)] <createdAt DESC> |0, 25|',
+      'vehicle {id type enabled seats make model description color licensePlate createdAt driver {id firstName lastName} store {id name color} vehicleCoordinate {id latitude longitude closestRoadLatitude closestRoadLongitude altitude accuracy altitudeAccuracy heading speed createdAt storeDistance storeDuration}} [store.id IN :p0 AND enabled = :p1 AND (make ILIKE :p2 OR model ILIKE :p3 OR licensePlate ILIKE :p4)] <createdAt DESC> |0, 25|',
     )
   })
 })
