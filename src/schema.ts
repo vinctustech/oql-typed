@@ -274,11 +274,28 @@ export interface RelationFieldRef<Target extends EntityDefinition = any, Kind ex
   readonly builder: RelationBuilder<any, any, any>
 }
 
+// For manyToOne relations, expose the target entity's fields for dotted path access
+type ManyToOneFieldRef<Target extends EntityDefinition, Kind extends RelationKind> =
+  RelationFieldRef<Target, Kind> & DottedFieldRefsFor<Target>
+
+// Dotted field refs: each field on the target becomes accessible, building up the dotted path
+type DottedFieldRefsFor<D extends EntityDefinition> = {
+  readonly [K in keyof D]: D[K] extends ColumnBuilder<infer T, infer N, any>
+    ? FieldRef<N extends true ? T | null : T>
+    : D[K] extends RelationBuilder<infer Target, infer Kind, any>
+      ? Kind extends 'manyToOne'
+        ? ManyToOneFieldRef<Target, Kind>
+        : RelationFieldRef<Target, Kind>
+      : never
+}
+
 type FieldRefsFor<D extends EntityDefinition> = {
   readonly [K in keyof D]: D[K] extends ColumnBuilder<infer T, infer N, any>
     ? FieldRef<N extends true ? T | null : T>
     : D[K] extends RelationBuilder<infer Target, infer Kind, any>
-      ? RelationFieldRef<Target, Kind>
+      ? Kind extends 'manyToOne'
+        ? ManyToOneFieldRef<Target, Kind>
+        : RelationFieldRef<Target, Kind>
       : never
 }
 
@@ -288,6 +305,58 @@ export type EntityInstance<D extends EntityDefinition = EntityDefinition> = {
   readonly tableName: string
   readonly definition: D
 } & FieldRefsFor<D>
+
+// Create a relation ref that supports dotted path access for manyToOne relations
+function createRelationRef(
+  entityName: string,
+  fieldName: string,
+  builder: RelationBuilder<any, any, any>,
+  pathPrefix?: string,
+): any {
+  const fullPath = pathPrefix ? `${pathPrefix}.${fieldName}` : fieldName
+
+  const base = {
+    __relationRef: true,
+    entityName,
+    fieldName: fullPath,
+    builder,
+  }
+
+  // For manyToOne relations, create a proxy that resolves target entity fields on access
+  if (builder.relationKind === 'manyToOne') {
+    return new Proxy(base, {
+      get(target, prop, receiver) {
+        if (prop in target) return Reflect.get(target, prop, receiver)
+
+        // Lazily resolve the target entity's fields
+        const targetEntity = builder.target()
+        const targetDef = targetEntity.definition
+        const targetField = targetDef[prop as string]
+
+        if (!targetField) return undefined
+
+        if (targetField.kind === 'column') {
+          return {
+            __fieldRef: true,
+            entityName: targetEntity.entityName,
+            fieldName: `${fullPath}.${prop as string}`,
+            builder: targetField,
+          }
+        } else {
+          // Nested relation — recurse
+          return createRelationRef(
+            targetEntity.entityName,
+            prop as string,
+            targetField as RelationBuilder<any, any, any>,
+            fullPath,
+          )
+        }
+      },
+    })
+  }
+
+  return base
+}
 
 // Overloads: entity(name, definition) or entity(name, tableName, definition)
 export function entity<D extends EntityDefinition>(name: string, definition: D): EntityInstance<D>
@@ -316,12 +385,7 @@ export function entity<D extends EntityDefinition>(
         builder,
       } satisfies Omit<FieldRef, '_type'>
     } else {
-      instance[key] = {
-        __relationRef: true,
-        entityName: name,
-        fieldName: key,
-        builder,
-      } satisfies Omit<RelationFieldRef, '_target' | '_kind'>
+      instance[key] = createRelationRef(name, key, builder as RelationBuilder<any, any, any>)
     }
   }
 
