@@ -92,14 +92,10 @@ const ID = {
   st5: 'd0000000-0000-4000-8000-000000000005',
 }
 
-const seedSQL = `DROP TABLE IF EXISTS steps;
-DROP TABLE IF EXISTS trips;
-DROP TABLE IF EXISTS stores;
-DROP TABLE IF EXISTS places;
-CREATE TABLE places (id UUID PRIMARY KEY, address TEXT NOT NULL, latitude DOUBLE NOT NULL, longitude DOUBLE NOT NULL);
+const seedSQL = `CREATE TABLE places (id UUID PRIMARY KEY, address TEXT NOT NULL, latitude DOUBLE NOT NULL, longitude DOUBLE NOT NULL);
 CREATE TABLE stores (id UUID PRIMARY KEY, name TEXT NOT NULL, enabled BOOLEAN NOT NULL);
 CREATE TABLE trips (id UUID PRIMARY KEY, state TEXT NOT NULL, seats INTEGER NOT NULL, store_id UUID REFERENCES stores(id));
-CREATE TABLE steps (id UUID PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL, position INTEGER NOT NULL, finished_at TIMESTAMP, trip_id UUID REFERENCES trips(id), place_id UUID REFERENCES places(id));
+CREATE TABLE steps (id UUID PRIMARY KEY, "type" TEXT NOT NULL, name TEXT NOT NULL, position INTEGER NOT NULL, finished_at TIMESTAMP, trip_id UUID REFERENCES trips(id), place_id UUID REFERENCES places(id));
 
 INSERT INTO places (id, address, latitude, longitude) VALUES ('${ID.p1}', '123 Main St', 45.5, -73.6);
 INSERT INTO places (id, address, latitude, longitude) VALUES ('${ID.p2}', '456 Oak Ave', 45.6, -73.7);
@@ -109,15 +105,15 @@ INSERT INTO stores (id, name, enabled) VALUES ('${ID.s1}', 'Downtown', true);
 INSERT INTO trips (id, state, seats, store_id) VALUES ('${ID.t1}', 'CONFIRMED', 2, '${ID.s1}');
 INSERT INTO trips (id, state, seats, store_id) VALUES ('${ID.t2}', 'COMPLETED', 1, '${ID.s1}');
 
-INSERT INTO steps (id, type, name, position, finished_at, trip_id, place_id) VALUES
+INSERT INTO steps (id, "type", name, position, finished_at, trip_id, place_id) VALUES
   ('${ID.st1}', 'place', 'Start', 1, NULL, '${ID.t1}', '${ID.p1}');
-INSERT INTO steps (id, type, name, position, finished_at, trip_id, place_id) VALUES
+INSERT INTO steps (id, "type", name, position, finished_at, trip_id, place_id) VALUES
   ('${ID.st2}', 'pickup', 'Pickup Alice', 2, NULL, '${ID.t1}', NULL);
-INSERT INTO steps (id, type, name, position, finished_at, trip_id, place_id) VALUES
+INSERT INTO steps (id, "type", name, position, finished_at, trip_id, place_id) VALUES
   ('${ID.st3}', 'place', 'End', 3, '2024-06-01T12:00:00Z', '${ID.t1}', '${ID.p2}');
-INSERT INTO steps (id, type, name, position, finished_at, trip_id, place_id) VALUES
+INSERT INTO steps (id, "type", name, position, finished_at, trip_id, place_id) VALUES
   ('${ID.st4}', 'place', 'Start', 1, '2024-06-01T10:00:00Z', '${ID.t2}', '${ID.p1}');
-INSERT INTO steps (id, type, name, position, finished_at, trip_id, place_id) VALUES
+INSERT INTO steps (id, "type", name, position, finished_at, trip_id, place_id) VALUES
   ('${ID.st5}', 'place', 'End', 2, '2024-06-01T11:00:00Z', '${ID.t2}', '${ID.p2}');
 `
 
@@ -128,11 +124,7 @@ INSERT INTO steps (id, type, name, position, finished_at, trip_id, place_id) VAL
 describe('filtered sub-collections', () => {
   before(async () => {
     oql = new OQL_PETRADB(dm)
-    // Split DDL and DML into separate rawMulti calls to avoid petradb statement limit issues
-    const statements = seedSQL.split('\n').filter(s => s.trim())
-    for (const stmt of statements) {
-      await oql.rawMulti(stmt)
-    }
+    await oql.rawMulti(seedSQL)
   })
 
   it('filter nested oneToMany by field value', async () => {
