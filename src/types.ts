@@ -1,4 +1,5 @@
 import type { ColumnBuilder, EntityDefinition, RelationBuilder } from './schema.js'
+import type { FilterExpr, OrderExpr } from './operators.js'
 
 // ── Utility types ──
 
