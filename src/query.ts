@@ -90,9 +90,9 @@ class QueryBuilder<D extends EntityDefinition, Result> {
     }
 
     if (this.offsetVal !== undefined || this.limitVal !== undefined) {
-      const offset = this.offsetVal ?? ''
       const limit = this.limitVal ?? ''
-      q += ` |${offset}${limit ? `, ${limit}` : ''}|`
+      const offset = this.offsetVal ?? ''
+      q += ` |${limit}${offset !== '' ? `, ${offset}` : ''}|`
     }
 
     return { queryStr: q, params: ctx.getParams() }
