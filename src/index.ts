@@ -58,6 +58,10 @@ export {
 
 export type { FilterExpr, OrderExpr } from './operators.js'
 
+// Expressions (function calls, raw OQL)
+export { fn, raw } from './expressions.js'
+export type { OQLExpr } from './expressions.js'
+
 // DM generation
 export { generateDM } from './generate-dm.js'
 

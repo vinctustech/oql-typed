@@ -22,6 +22,9 @@ function buildProjection<D extends EntityDefinition>(args: readonly ProjectionAr
   for (const arg of args) {
     if (typeof arg === 'string') {
       parts.push(arg as string)
+    } else if (typeof arg === 'object' && arg !== null && '__oqlExpr' in arg) {
+      // Raw/expression projection: raw('count: sum(seats)')
+      parts.push((arg as any).toOQL(ctx))
     } else if (typeof arg === 'object' && arg !== null) {
       for (const [key, value] of Object.entries(arg as Record<string, any>)) {
         if (isFilteredSpec(value)) {

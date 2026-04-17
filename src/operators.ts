@@ -1,13 +1,16 @@
 import type { EntityDefinition, EntityInstance, FieldRef, RelationFieldRef } from './schema.js'
 import { RelationBuilder } from './schema.js'
 
-// ── Resolve field name — for manyToOne relations, use dotted FK path ──
+// ── Resolve field to OQL string — handles plain fields, FK relations, and expressions ──
 
-function resolveFieldName(field: FieldRef<any>): string {
+function resolveField(field: FieldRef<any>, ctx: FilterContext): string {
+  // OQL expression (fn(), raw()) — use toOQL
+  if ('__oqlExpr' in field && typeof (field as any).toOQL === 'function') {
+    return (field as any).toOQL(ctx)
+  }
+  // manyToOne relation — use dotted FK path
   if (field.builder instanceof RelationBuilder && field.builder.relationKind === 'manyToOne') {
-    // OQL requires dotted path for FK comparisons: vehicle.id, not vehicle
     const target = field.builder.target()
-    // Find the PK field name on the target entity
     for (const [key, b] of Object.entries(target.definition) as [string, any][]) {
       if (b.kind === 'column' && b.isPrimaryKey) {
         return `${field.fieldName}.${key}`
@@ -47,7 +50,7 @@ function comparisonOp<T>(field: FieldRef<T>, op: string, value: T): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `${resolveFieldName(field)} ${op} ${ctx.addParam(value)}`
+      return `${resolveField(field, ctx)} ${op} ${ctx.addParam(value)}`
     },
   }
 }
@@ -112,7 +115,7 @@ export function inList<T>(field: FieldRef<T>, values: T[]): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `${resolveFieldName(field)} IN ${ctx.addParam(values)}`
+      return `${resolveField(field, ctx)} IN ${ctx.addParam(values)}`
     },
   }
 }
@@ -121,7 +124,7 @@ export function notInList<T>(field: FieldRef<T>, values: T[]): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `${resolveFieldName(field)} NOT IN ${ctx.addParam(values)}`
+      return `${resolveField(field, ctx)} NOT IN ${ctx.addParam(values)}`
     },
   }
 }
@@ -132,7 +135,7 @@ export function like(field: FieldRef<string>, pattern: string): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `${resolveFieldName(field)} LIKE ${ctx.addParam(pattern)}`
+      return `${resolveField(field, ctx)} LIKE ${ctx.addParam(pattern)}`
     },
   }
 }
@@ -141,7 +144,7 @@ export function ilike(field: FieldRef<string>, pattern: string): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `${resolveFieldName(field)} ILIKE ${ctx.addParam(pattern)}`
+      return `${resolveField(field, ctx)} ILIKE ${ctx.addParam(pattern)}`
     },
   }
 }
@@ -152,7 +155,7 @@ export function between<T>(field: FieldRef<T>, low: T, high: T): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `${resolveFieldName(field)} BETWEEN ${ctx.addParam(low)} AND ${ctx.addParam(high)}`
+      return `${resolveField(field, ctx)} BETWEEN ${ctx.addParam(low)} AND ${ctx.addParam(high)}`
     },
   }
 }
@@ -163,8 +166,7 @@ export function isNull(field: FieldRef<unknown>): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      void ctx
-      return `${resolveFieldName(field)} IS NULL`
+      return `${resolveField(field, ctx)} IS NULL`
     },
   }
 }
@@ -173,8 +175,7 @@ export function isNotNull(field: FieldRef<unknown>): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      void ctx
-      return `${resolveFieldName(field)} IS NOT NULL`
+      return `${resolveField(field, ctx)} IS NOT NULL`
     },
   }
 }
