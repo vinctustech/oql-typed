@@ -46,6 +46,50 @@ export function fn<T = unknown>(name: string, ...args: FnArg[]): OQLExpr<T> & Fi
   return expr
 }
 
+// ── Reference operator: ref(trip.returnTripFor) → &returnTripFor ──
+
+export function ref<T = unknown>(field: FieldRef<any>): OQLExpr<T> & FieldRef<T> {
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined as any,
+    entityName: field.entityName,
+    fieldName: `&${field.fieldName}`,
+    builder: field.builder,
+    toOQL(_ctx: FilterContext): string {
+      return `&${field.fieldName}`
+    },
+  } as any
+}
+
+// ── Subquery expression: subquery(entity, ['count(*)']) → (entity {count(*)}) ──
+
+export function subquery<T = unknown>(
+  relation: { fieldName: string } | { entityName: string },
+  projection: string[],
+  filter?: FilterExpr,
+): OQLExpr<T> & FieldRef<T> {
+  // Use fieldName for relation refs (e.g., vehicle.drivers → 'drivers')
+  // Fall back to entityName for entity refs
+  const name = 'fieldName' in relation && relation.fieldName ? relation.fieldName : (relation as any).entityName
+  const expr: any = {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined as any,
+    entityName: '',
+    fieldName: '',
+    builder: null,
+    toOQL(ctx: FilterContext): string {
+      let q = `${name} {${projection.join(' ')}}`
+      if (filter) {
+        q += ` [${filter.toOQL(ctx)}]`
+      }
+      return `(${q})`
+    },
+  }
+  return expr
+}
+
 // ── Raw OQL expression: raw("' '"), raw('count: sum(seats)') ──
 
 export function raw<T = unknown>(oql: string): OQLExpr<T> & FieldRef<T> {
