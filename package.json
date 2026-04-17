@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts src/integration.test.ts src/dotted-paths.test.ts src/filtered-subcollections.test.ts src/functions.test.ts src/reference-between-subquery.test.ts",
+    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts src/integration.test.ts src/dotted-paths.test.ts src/filtered-subcollections.test.ts src/functions.test.ts src/reference-between-subquery.test.ts src/mutations-querybuilder.test.ts",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

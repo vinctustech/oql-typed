@@ -62,6 +62,13 @@ export type { FilterExpr, OrderExpr } from './operators.js'
 export { fn, raw, ref, subquery } from './expressions.js'
 export type { OQLExpr } from './expressions.js'
 
+// Mutations
+export { insert, update } from './mutations.js'
+export type { OQLMutationInstance, InsertInput, UpdateInput } from './mutations.js'
+
+// Conditional QueryBuilder
+export { queryBuilder } from './query-builder.js'
+
 // DM generation
 export { generateDM } from './generate-dm.js'
 
