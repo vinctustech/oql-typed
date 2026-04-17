@@ -90,6 +90,25 @@ export function subquery<T = unknown>(
   return expr
 }
 
+// ── Alias expression for projections: alias('returnTripId', trip.returnTrip.id) → returnTripId: (returnTrip.id) ──
+
+export function alias<T = unknown>(label: string, field: FieldRef<any> | OQLExpr<any>): OQLExpr<T> & FieldRef<T> {
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined as any,
+    entityName: '',
+    fieldName: label,
+    builder: null as any,
+    toOQL(ctx: FilterContext): string {
+      if ('__oqlExpr' in field && typeof (field as any).toOQL === 'function') {
+        return `${label}: (${(field as any).toOQL(ctx)})`
+      }
+      return `${label}: (${(field as FieldRef).fieldName})`
+    },
+  } as any
+}
+
 // ── Raw OQL expression: raw("' '"), raw('count: sum(seats)') ──
 
 export function raw<T = unknown>(oql: string): OQLExpr<T> & FieldRef<T> {
