@@ -27,7 +27,7 @@ export {
 export type { EntityDefinition, EntityInstance, FieldRef, RelationFieldRef } from './schema.js'
 
 // Type inference
-export type { InferProjection, InferAllScalars, ProjectionArg, Prettify } from './types.js'
+export type { InferProjection, InferAllScalars, ProjectionArg, FilteredRelationSpec, Prettify } from './types.js'
 
 // Query
 export { query } from './query.js'

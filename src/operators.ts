@@ -8,7 +8,7 @@ function resolveFieldName(field: FieldRef<any>): string {
     // OQL requires dotted path for FK comparisons: vehicle.id, not vehicle
     const target = field.builder.target()
     // Find the PK field name on the target entity
-    for (const [key, b] of Object.entries(target.definition)) {
+    for (const [key, b] of Object.entries(target.definition) as [string, any][]) {
       if (b.kind === 'column' && b.isPrimaryKey) {
         return `${field.fieldName}.${key}`
       }

@@ -36,10 +36,19 @@ export type ProjectionArg<D extends EntityDefinition> =
   | ScalarKeys<D>
   | RelationSpec<D>
 
-// A relation spec maps relation field names to arrays of projection args for the target entity
+// Filtered relation spec: fields + optional where/orderBy
+export interface FilteredRelationSpec<Target extends EntityDefinition> {
+  readonly fields: readonly ProjectionArg<Target>[]
+  readonly where?: FilterExpr
+  readonly orderBy?: readonly OrderExpr[]
+}
+
+// A relation spec maps relation field names to either:
+// - an array of projection args (simple)
+// - a { fields, where?, orderBy? } object (filtered)
 type RelationSpec<D extends EntityDefinition> = {
   [K in RelationKeys<D>]?: D[K] extends RelationBuilder<infer Target, any, any>
-    ? readonly ProjectionArg<Target>[]
+    ? readonly ProjectionArg<Target>[] | FilteredRelationSpec<Target>
     : never
 }
 
@@ -57,6 +66,12 @@ type ExtractRelationArgs<D extends EntityDefinition, Args extends readonly Proje
   Record<string, any>
 >
 
+// Extract the projection args from either a plain array or a FilteredRelationSpec
+type ExtractRelationFields<V> =
+  V extends { readonly fields: readonly any[] } ? V['fields'] :
+  V extends readonly any[] ? V :
+  never
+
 // Resolves a single relation field's projected type
 type InferRelationType<
   R,
@@ -73,7 +88,7 @@ type InferRelationType<
 type InferRelationSpecs<D extends EntityDefinition, Specs> = UnionToIntersection<
   Specs extends infer S extends Record<string, any>
     ? {
-        [K in keyof S & keyof D]: InferRelationType<D[K], S[K] & readonly any[]>
+        [K in keyof S & keyof D]: InferRelationType<D[K], ExtractRelationFields<S[K]>>
       }
     : never
 >

@@ -12,16 +12,29 @@ export interface OQLInstance {
 
 // ── Build the selection string from variadic args ──
 
-function buildProjection<D extends EntityDefinition>(args: readonly ProjectionArg<D>[]): string {
+function isFilteredSpec(value: any): value is { fields: readonly any[]; where?: FilterExpr; orderBy?: readonly OrderExpr[] } {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && 'fields' in value
+}
+
+function buildProjection<D extends EntityDefinition>(args: readonly ProjectionArg<D>[], ctx: FilterContext): string {
   const parts: string[] = []
 
   for (const arg of args) {
     if (typeof arg === 'string') {
       parts.push(arg as string)
     } else if (typeof arg === 'object' && arg !== null) {
-      for (const [key, value] of Object.entries(arg as Record<string, readonly ProjectionArg<any>[]>)) {
-        if (Array.isArray(value) && value.length > 0) {
-          parts.push(`${key} {${buildProjection(value)}}`)
+      for (const [key, value] of Object.entries(arg as Record<string, any>)) {
+        if (isFilteredSpec(value)) {
+          let projection = `${key} {${buildProjection(value.fields, ctx)}}`
+          if (value.where) {
+            projection += ` [${value.where.toOQL(ctx)}]`
+          }
+          if (value.orderBy && value.orderBy.length > 0) {
+            projection += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
+          }
+          parts.push(projection)
+        } else if (Array.isArray(value) && value.length > 0) {
+          parts.push(`${key} {${buildProjection(value, ctx)}}`)
         } else {
           parts.push(key)
         }
@@ -37,7 +50,7 @@ function buildProjection<D extends EntityDefinition>(args: readonly ProjectionAr
 class QueryBuilder<D extends EntityDefinition, Result> {
   private readonly oql: OQLInstance
   private readonly entityName: string
-  private readonly projectionStr: string | undefined
+  private readonly projectionArgs: readonly ProjectionArg<D>[] | undefined
   private filterExpr: FilterExpr | undefined
   private orderExprs: OrderExpr[] = []
   private limitVal: number | undefined
@@ -46,11 +59,11 @@ class QueryBuilder<D extends EntityDefinition, Result> {
   constructor(
     oql: OQLInstance,
     entity: EntityInstance<D>,
-    projectionStr: string | undefined,
+    projectionArgs: readonly ProjectionArg<D>[] | undefined,
   ) {
     this.oql = oql
     this.entityName = entity.entityName
-    this.projectionStr = projectionStr
+    this.projectionArgs = projectionArgs
   }
 
   where(filter: FilterExpr): this {
@@ -77,8 +90,8 @@ class QueryBuilder<D extends EntityDefinition, Result> {
     const ctx = new FilterContext()
     let q = this.entityName
 
-    if (this.projectionStr) {
-      q += ` {${this.projectionStr}}`
+    if (this.projectionArgs) {
+      q += ` {${buildProjection(this.projectionArgs, ctx)}}`
     }
 
     if (this.filterExpr) {
@@ -140,8 +153,7 @@ export function query<D extends EntityDefinition>(
 ): QueryStarter<D> {
   return {
     select<const Args extends readonly ProjectionArg<D>[]>(...args: Args) {
-      const projectionStr = buildProjection(args)
-      return new QueryBuilder<D, InferProjection<D, Args>>(oql, entity, projectionStr)
+      return new QueryBuilder<D, InferProjection<D, Args>>(oql, entity, args)
     },
 
     where(filter: FilterExpr) {
