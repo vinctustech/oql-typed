@@ -294,7 +294,7 @@ class Parser {
       return { kind: 'oneToOne', target, reference }
     }
 
-    // Array relation: [EntityName] or [EntityName] (junction)
+    // Array relation: [EntityName], [EntityName] (junction), or [EntityName].reverseRef
     if (this.peek().type === '[') {
       this.advance()
       const target = this.expect('ident').value
@@ -305,6 +305,12 @@ class Parser {
         const junction = this.expect('ident').value
         this.expect(')')
         return { kind: 'manyToMany', target, junction }
+      }
+
+      // Reverse reference: [target].fieldName
+      if (this.peek().type === '.') {
+        this.advance()
+        this.expect('ident') // reverse reference name (consumed but unused for codegen)
       }
 
       return { kind: 'oneToMany', target }
@@ -350,12 +356,12 @@ function normalizeType(typeName: string): { builder: string } {
     integer: { builder: 'integer()' },
     int: { builder: 'integer()' },
     int4: { builder: 'integer()' },
-    bigint: { builder: 'bigint_()' },
-    int8: { builder: 'bigint_()' },
+    bigint: { builder: 'bigint()' },
+    int8: { builder: 'bigint()' },
     float: { builder: 'float()' },
     float8: { builder: 'float()' },
-    bool: { builder: 'boolean_()' },
-    boolean: { builder: 'boolean_()' },
+    bool: { builder: 'boolean()' },
+    boolean: { builder: 'boolean()' },
     timestamp: { builder: 'timestamp()' },
     date: { builder: 'date()' },
     time: { builder: 'time()' },
@@ -378,16 +384,9 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
   const lines: string[] = []
   const enumNames = new Set(dm.enums.map((e) => e.name))
 
+  // Always include core schema-builder imports
   const imports = new Set([
     'entity',
-    'text',
-    'uuid',
-    'integer',
-    'float',
-    'timestamp',
-    'date',
-    'json',
-    'textArray',
     'manyToOne',
     'oneToMany',
     'manyToMany',
@@ -395,13 +394,35 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
     'enumType',
   ])
 
+  // Conditionally add primitive-type imports based on what the model uses
+  const PRIMITIVE_IMPORTS: Record<string, string> = {
+    text: 'text',
+    uuid: 'uuid',
+    integer: 'integer',
+    int: 'integer',
+    int4: 'integer',
+    bigint: 'bigint_ as bigint',
+    int8: 'bigint_ as bigint',
+    float: 'float',
+    float8: 'float',
+    bool: 'boolean_ as boolean',
+    boolean: 'boolean_ as boolean',
+    timestamp: 'timestamp',
+    date: 'date',
+    time: 'time',
+    interval: 'interval',
+    json: 'json',
+    'text[]': 'textArray',
+    'integer[]': 'integerArray',
+    'int[]': 'integerArray',
+    decimal: 'decimal',
+  }
+
   for (const ent of dm.entities) {
     for (const f of ent.fields) {
       if (f.type.kind === 'primitive') {
-        if (['bigint', 'int8'].includes(f.type.typeName)) imports.add('bigint_ as bigint')
-        if (['bool', 'boolean'].includes(f.type.typeName)) imports.add('boolean_ as boolean')
-        if (f.type.typeName === 'decimal') imports.add('decimal')
-        if (['integer[]', 'int[]'].includes(f.type.typeName)) imports.add('integerArray')
+        const importName = PRIMITIVE_IMPORTS[f.type.typeName]
+        if (importName) imports.add(importName)
       }
     }
   }
@@ -414,12 +435,16 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
     lines.push('')
   }
 
+  // Map enumName → values for codegen
+  const enumValues = new Map<string, readonly string[]>()
+  for (const e of dm.enums) enumValues.set(e.name, e.values)
+
   for (const ent of dm.entities) {
     const tableArg = ent.tableName ? `'${ent.name}', '${ent.tableName}'` : `'${ent.name}'`
     lines.push(`export const ${ent.name} = entity(${tableArg}, {`)
 
     for (const field of ent.fields) {
-      lines.push(`  ${generateFieldTS(field, enumNames)},`)
+      lines.push(`  ${generateFieldTS(field, enumNames, enumValues)},`)
     }
 
     lines.push('})')
@@ -429,7 +454,7 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
   return lines.join('\n')
 }
 
-function generateFieldTS(field: ParsedField, enumNames: Set<string>): string {
+function generateFieldTS(field: ParsedField, enumNames: Set<string>, enumValues: Map<string, readonly string[]>): string {
   let expr: string
 
   switch (field.type.kind) {
@@ -448,12 +473,16 @@ function generateFieldTS(field: ParsedField, enumNames: Set<string>): string {
       break
     }
     case 'enum': {
-      expr = `enumType<${field.type.enumName}>('${field.type.enumName}', [/* TODO: add values */])`
+      const vals = enumValues.get(field.type.enumName) ?? []
+      const valsLit = vals.map((v) => `'${v}'`).join(', ')
+      expr = `enumType<${field.type.enumName}>('${field.type.enumName}', [${valsLit}])`
       break
     }
     case 'manyToOne': {
       if (enumNames.has(field.type.target)) {
-        expr = `enumType<${field.type.target}>('${field.type.target}', [/* values defined above */])`
+        const vals = enumValues.get(field.type.target) ?? []
+        const valsLit = vals.map((v) => `'${v}'`).join(', ')
+        expr = `enumType<${field.type.target}>('${field.type.target}', [${valsLit}])`
       } else {
         const columnOpt = field.columnAlias ? `, { column: '${field.columnAlias}' }` : ''
         expr = `manyToOne(() => ${field.type.target}${columnOpt})`

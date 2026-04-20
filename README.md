@@ -8,7 +8,10 @@ Compile-time typed queries for [OQL](https://github.com/vinctustech/oql). Define
 npm install @vinctus/oql-typed
 ```
 
-Requires `@vinctus/oql` as a peer dependency.
+Requires one of the OQL backends as a peer dependency:
+
+- `@vinctus/oql-pg` — PostgreSQL backend
+- `@vinctus/oql-petradb` — In-memory backend (great for tests)
 
 ## Quick Start
 
@@ -33,7 +36,7 @@ const store = entity('store', 'stores', {
   id:      uuid().primaryKey(),
   name:    text(),
   enabled: boolean(),
-  place:   manyToOne(() => place, { column: 'place_id' }),
+  account: manyToOne(() => account, { column: 'account_id' }),
   users:   manyToMany(() => user, { junction: 'users_stores' }),
 })
 
@@ -47,7 +50,6 @@ const user = entity('user', 'users', {
   lastLoginAt: timestamp().column('last_login_at').nullable(),
   account:     manyToOne(() => account, { column: 'account_id' }),
   stores:      manyToMany(() => store, { junction: 'users_stores' }),
-  vehicle:     oneToOne(() => vehicle, { reference: 'driver' }).nullable(),
 })
 ```
 
@@ -55,11 +57,10 @@ const user = entity('user', 'users', {
 
 ```typescript
 import { generateDM } from '@vinctus/oql-typed'
-import OQL from '@vinctus/oql'
+import { OQL_PG } from '@vinctus/oql-pg'
 
-const dm = generateDM(account, store, user, vehicle, place)
-
-const oql = new OQL(dm, host, port, database, username, password)
+const dm = generateDM(account, store, user)
+const oql = new OQL_PG(dm, host, port, database, username, password)
 ```
 
 ### 3. Write typed queries
@@ -67,7 +68,7 @@ const oql = new OQL(dm, host, port, database, username, password)
 ```typescript
 import { query, eq, and, inList, ilike, or, exists, desc } from '@vinctus/oql-typed'
 
-// Return type is inferred from the selection — no manual type parameter
+// Result type is inferred from .select() — no manual type parameter
 const result = await query(oql, user)
   .select('id', 'firstName', 'lastName', { account: ['id', 'name'] })
   .where(eq(user.id, userId))
@@ -77,87 +78,56 @@ const result = await query(oql, user)
 // No selection — returns all scalar fields
 const accounts = await query(oql, account).many()
 // => { id: string, name: string, enabled: boolean, plan: string }[]
-
-// Complex query with nested relations, filtering, ordering, pagination
-const users = await query(oql, user)
-  .select('id', 'firstName', 'lastName', 'role', {
-    stores: ['id', 'name'],
-    vehicle: ['id', 'make', 'model'],
-  })
-  .where(and(
-    exists(user.stores, inList(store.id, storeIds)),
-    eq(user.enabled, true),
-    or(ilike(user.firstName, `%${search}%`), ilike(user.lastName, `%${search}%`)),
-  ))
-  .orderBy(desc(user.lastLoginAt))
-  .limit(25)
-  .offset(0)
-  .many()
 ```
 
 ## What the compiler catches
 
 ```typescript
-// Misspelled field — compile error
-query(oql, user).select('id', 'fistName')
+query(oql, user).select('id', 'fistName')           // ✗ misspelled field
+eq(user.enabled, 'yes')                             // ✗ wrong type (boolean expected)
+eq(user.role, 'SUPERADMIN')                         // ✗ invalid enum value
+ilike(user.enabled, '%test%')                       // ✗ ilike requires string field
 
-// Wrong type in filter — compile error (enabled is boolean, not string)
-eq(user.enabled, 'yes')
-
-// Invalid enum value — compile error
-eq(user.role, 'SUPERADMIN')
-
-// Accessing a field not in the projection — compile error
 const u = await query(oql, user).select('id').one()
-u?.firstName  // Property 'firstName' does not exist
-
-// Non-string field with ilike — compile error
-ilike(user.enabled, '%test%')
+u?.firstName                                         // ✗ not in projection
 ```
 
-## API
+## Selection
 
-### Schema
-
-| Function | Description |
-|----------|-------------|
-| `entity(name, definition)` | Define an entity. Optional second arg for table name: `entity('user', 'users', { ... })` |
-| `uuid()`, `text()`, `integer()`, `float()`, `boolean()`, `timestamp()`, `date()`, `json()` | Column types |
-| `textArray()`, `integerArray()`, `decimal(p?, s?)` | Additional column types |
-| `enumType<T>(name, values)` | Enum column with typed string union |
-| `manyToOne(target, opts?)` | Foreign key relation |
-| `oneToMany(target)` | Reverse foreign key (array) |
-| `manyToMany(target, { junction })` | Junction table relation (array) |
-| `oneToOne(target, opts?)` | One-to-one reverse relation |
-
-Column modifiers: `.primaryKey()`, `.nullable()`, `.column('db_alias')`
-
-### Query
+Scalars as string args, relations as objects:
 
 ```typescript
-query(oql, entity)
-  .select(...)           // Optional — select fields and relations
-  .where(filter)          // Optional — filter rows
-  .orderBy(asc(f), ...)   // Optional — sort
-  .limit(n)               // Optional
-  .offset(n)              // Optional
-  .one()                  // Execute, return T | undefined
-  .many()                 // Execute, return T[]
-  .count()                // Execute, return number
-  .toOQL()                // Return { queryStr, params } without executing
+.select('id', 'name')                                                      // scalars
+.select('id', { account: ['id', 'name'] })                                 // simple relation
+.select('id', { stores: ['id', 'name', { place: ['lat', 'lng'] }] })       // nested
 ```
 
-### Selection
+### Filtered sub-collections
 
-Scalars as string args, relations as objects with arrays:
+Add `where` and `orderBy` to a nested relation:
 
 ```typescript
-.select('id', 'name')
-.select('id', { account: ['id', 'name'] })
-.select('id', { stores: ['id', 'name', { place: ['lat', 'lng'] }] })
+.select('id', 'name', {
+  trips: {
+    fields: ['id', 'state', 'seats'],
+    where: ne(trip.state, 'COMPLETED'),
+    orderBy: [desc(trip.createdAt)],
+  },
+})
 ```
 
-### Operators
+### Dotted paths on `manyToOne`
+
+Access fields on related entities directly in filters:
+
+```typescript
+.where(and(
+  eq(trip.store.account.id, accountId),     // multi-level FK chain
+  inList(trip.store.id, storeIds),
+))
+```
+
+## Operators
 
 | Operator | Example |
 |----------|---------|
@@ -170,18 +140,103 @@ Scalars as string args, relations as objects with arrays:
 | `exists` | `exists(user.stores, eq(store.id, storeId))` |
 | `asc`, `desc` | `desc(user.lastLoginAt)` |
 
-### DM Generation
+## Expressions
+
+For OQL features beyond plain field comparisons:
 
 ```typescript
-import { generateDM } from '@vinctus/oql-typed'
+import { fn, raw, ref, subquery, alias } from '@vinctus/oql-typed'
 
-const dmString = generateDM(account, store, user, vehicle)
-// Returns the .dm string for the OQL constructor
+// Function call in a filter — fn(name, ...args)
+ilike(fn('concat', vehicle.make, raw("' '"), vehicle.model), '%toyota%')
+
+// Reference operator (&) — check the FK column itself, not the joined entity
+isNull(ref(trip.returnTripFor))                     // → &returnTripFor IS NULL
+
+// Subquery in a filter — (relation {projection}) op value
+eq(subquery(vehicle.drivers, ['count(*)']), 0)      // vehicles with no drivers
+
+// Aliased projection — label: (expression)
+.select('id', alias('returnTripId', trip.returnTripFor.id))
+
+// Raw OQL escape hatch — for anything without a typed wrapper
+.select('id', raw('count: sum(seats)'))
 ```
 
-## Bootstrapping from an existing `.dm` file
+## Mutations
 
-If you have an existing OQL data model string, use the CLI to generate TypeScript schema definitions:
+```typescript
+import { insert, update } from '@vinctus/oql-typed'
+
+// insert() — typed input (required/optional fields), returns full row
+const newUser = await insert(oql, user, {
+  id:        crypto.randomUUID(),
+  firstName: 'Alice',
+  lastName:  'Smith',
+  email:     'alice@example.com',
+  role:      'ADMIN',
+  enabled:   true,
+  account:   accountId,                              // manyToOne FK
+  // lastLoginAt omitted — it's nullable
+})
+// => { id: string, firstName: string, ..., lastLoginAt: Date | null }
+
+// update() — all fields optional, returns updated fields + PK
+const updated = await update(oql, user, userId, {
+  firstName: 'Alicia',
+})
+// => { id: string, firstName: string }
+```
+
+## Conditional QueryBuilder
+
+For dynamic filtering (paginated lists with optional search/role/etc.):
+
+```typescript
+import { queryBuilder } from '@vinctus/oql-typed'
+
+const results = await queryBuilder(oql, user)
+  .select('id', 'firstName', 'role')
+  .where(eq(user.enabled, true))
+  .cond(role, eq(user.role, role))                   // applied if `role` is truthy
+  .cond(search, ilike(user.firstName, `%${search}%`))
+  .orderBy(desc(user.lastLoginAt))
+  .limit(size)
+  .offset(page * size)
+  .many()
+```
+
+## Query API
+
+```typescript
+query(oql, entity)
+  .select(...)            // Optional — fields and relations
+  .where(filter)           // Optional — single filter expression
+  .orderBy(asc(f), ...)    // Optional — sort
+  .limit(n)                // Optional
+  .offset(n)               // Optional
+  .one()                   // → T | undefined
+  .many()                  // → T[]
+  .count()                 // → number
+  .toOQL()                 // → { queryStr, params } — no execution
+```
+
+## Schema reference
+
+| Function | Description |
+|----------|-------------|
+| `entity(name, definition)` | Define an entity. Optional table name: `entity('user', 'users', { ... })` |
+| `uuid()`, `text()`, `integer()`, `bigint()`, `float()`, `boolean()`, `timestamp()`, `date()`, `time()`, `interval()`, `json()` | Column types |
+| `textArray()`, `integerArray()`, `decimal(p?, s?)` | Array & decimal columns |
+| `enumType<T>(name, values)` | Typed enum column |
+| `manyToOne(target, opts?)` | FK relation (supports dotted paths) |
+| `oneToMany(target)` | Reverse FK (array) |
+| `manyToMany(target, { junction })` | Junction-table relation (array) |
+| `oneToOne(target, opts?)` | One-to-one |
+
+Column modifiers: `.primaryKey()`, `.nullable()`, `.column('db_alias')`
+
+## Bootstrapping from an existing `.dm` file
 
 ```bash
 npx oql-typed-codegen schema.dm src/schema.generated.ts
@@ -194,3 +249,5 @@ import { parseDMAndGenerate } from '@vinctus/oql-typed'
 
 const tsSource = parseDMAndGenerate(dmString)
 ```
+
+> **Note:** Generated schemas with circular entity references (e.g. `user` → `account` → `users: [user]`) require `"noImplicitAny": false` in `tsconfig.json` to compile under strict mode. Query result inference still works correctly.

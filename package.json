@@ -1,6 +1,6 @@
 {
   "name": "@vinctus/oql-typed",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Compile-time typed queries for OQL",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts src/integration.test.ts src/dotted-paths.test.ts src/filtered-subcollections.test.ts src/functions.test.ts src/reference-between-subquery.test.ts src/mutations-querybuilder.test.ts src/alias.test.ts",
+    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts src/integration.test.ts src/dotted-paths.test.ts src/filtered-subcollections.test.ts src/functions.test.ts src/reference-between-subquery.test.ts src/mutations-querybuilder.test.ts src/alias.test.ts src/codegen.test.ts",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -18,14 +18,19 @@
     "oql-typed-codegen": "dist/cli.js"
   },
   "peerDependencies": {
-    "@vinctus/oql-pg": ">=1.4.0",
-    "@vinctus/oql-petradb": ">=1.4.0"
+    "@vinctus/oql-petradb": ">=1.4.0",
+    "@vinctus/oql-pg": ">=1.4.0"
   },
   "peerDependenciesMeta": {
-    "@vinctus/oql-pg": { "optional": true },
-    "@vinctus/oql-petradb": { "optional": true }
+    "@vinctus/oql-pg": {
+      "optional": true
+    },
+    "@vinctus/oql-petradb": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "@vinctus/oql-petradb": "file:../oql-SC-1432/petradb/npm",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
