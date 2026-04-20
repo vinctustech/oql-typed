@@ -15,9 +15,11 @@ import { execSync } from 'node:child_process'
 import { parseDM, generateSchemaTS } from './parse-dm.js'
 
 describe('codegen: imports', () => {
-  it('emits @ts-nocheck to suppress circular-reference errors', () => {
+  it('emits @ts-nocheck (with eslint-disable) to suppress circular-reference errors', () => {
     const ts = generateSchemaTS(parseDM(`entity foo { *id: uuid }`))
-    assert.ok(ts.startsWith('// @ts-nocheck'), `Expected @ts-nocheck as first line in: ${ts.split('\n').slice(0, 3).join('\n')}`)
+    const firstTwoLines = ts.split('\n').slice(0, 2).join('\n')
+    assert.equal(firstTwoLines, '// eslint-disable-next-line @typescript-eslint/ban-ts-comment\n// @ts-nocheck',
+      `Expected eslint-disable + @ts-nocheck as first two lines, got:\n${firstTwoLines}`)
   })
 
   it('only imports primitive types actually used', () => {

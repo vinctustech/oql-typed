@@ -431,6 +431,7 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
   // references (e.g., user → account → users: [user]). The schema file itself
   // isn't type-checked, but call-site type inference still works fully — typos
   // in .select(), wrong operator types, etc. are caught at the usage site.
+  lines.push('// eslint-disable-next-line @typescript-eslint/ban-ts-comment')
   lines.push('// @ts-nocheck')
   lines.push(`import { ${[...imports].join(', ')} } from '@vinctus/oql-typed'`)
   lines.push('')
