@@ -1,6 +1,6 @@
 {
   "name": "@vinctus/oql-typed",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "Compile-time typed queries for OQL",
   "type": "module",
   "main": "dist/index.js",
@@ -18,8 +18,8 @@
     "oql-typed-codegen": "dist/cli.js"
   },
   "peerDependencies": {
-    "@vinctus/oql-petradb": ">=1.4.0",
-    "@vinctus/oql-pg": ">=1.4.0"
+    "@vinctus/oql-petradb": ">=1.4.0-alpha.0",
+    "@vinctus/oql-pg": ">=1.4.0-alpha.0"
   },
   "peerDependenciesMeta": {
     "@vinctus/oql-pg": {
