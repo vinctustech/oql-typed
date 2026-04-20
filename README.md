@@ -250,4 +250,4 @@ import { parseDMAndGenerate } from '@vinctus/oql-typed'
 const tsSource = parseDMAndGenerate(dmString)
 ```
 
-> **Note:** Generated schemas with circular entity references (e.g. `user` → `account` → `users: [user]`) require `"noImplicitAny": false` in `tsconfig.json` to compile under strict mode. Query result inference still works correctly.
+> **Note:** The generated file includes `// @ts-nocheck` at the top. This suppresses TS7022 errors from circular entity references (e.g., `user` → `account` → `users: [user]`) in strict mode. Call-site type inference (result types, typo detection, operator type checks) is unaffected and works fully.

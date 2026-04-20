@@ -15,6 +15,11 @@ import { execSync } from 'node:child_process'
 import { parseDM, generateSchemaTS } from './parse-dm.js'
 
 describe('codegen: imports', () => {
+  it('emits @ts-nocheck to suppress circular-reference errors', () => {
+    const ts = generateSchemaTS(parseDM(`entity foo { *id: uuid }`))
+    assert.ok(ts.startsWith('// @ts-nocheck'), `Expected @ts-nocheck as first line in: ${ts.split('\n').slice(0, 3).join('\n')}`)
+  })
+
   it('only imports primitive types actually used', () => {
     const ts = generateSchemaTS(parseDM(`
       entity foo {
@@ -28,8 +33,8 @@ describe('codegen: imports', () => {
     assert.ok(ts.includes('text'))
 
     // Should NOT import unused primitives
-    assert.ok(!/\b(timestamp|date|time|interval|integer|float|json|boolean|bigint|decimal|textArray|integerArray)\b/.test(ts.split('\n')[0]),
-      `Unused imports leaked into: ${ts.split('\n')[0]}`)
+    assert.ok(!/\b(timestamp|date|time|interval|integer|float|json|boolean|bigint|decimal|textArray|integerArray)\b/.test((ts.split('\n').find((l) => l.startsWith('import')) ?? '')),
+      `Unused imports leaked into: ${(ts.split('\n').find((l) => l.startsWith('import')) ?? '')}`)
   })
 
   it('imports time when DM uses time type', () => {
@@ -39,7 +44,7 @@ describe('codegen: imports', () => {
         startTime (start_time): time!
       }
     `))
-    assert.ok(ts.split('\n')[0].includes('time'), `Expected 'time' import in: ${ts.split('\n')[0]}`)
+    assert.ok((ts.split('\n').find((l) => l.startsWith('import')) ?? '').includes('time'), `Expected 'time' import in: ${(ts.split('\n').find((l) => l.startsWith('import')) ?? '')}`)
   })
 
   it('imports interval when DM uses interval', () => {
@@ -49,7 +54,7 @@ describe('codegen: imports', () => {
         duration: interval!
       }
     `))
-    assert.ok(ts.split('\n')[0].includes('interval'), `Expected 'interval' import in: ${ts.split('\n')[0]}`)
+    assert.ok((ts.split('\n').find((l) => l.startsWith('import')) ?? '').includes('interval'), `Expected 'interval' import in: ${(ts.split('\n').find((l) => l.startsWith('import')) ?? '')}`)
   })
 
   it('imports boolean as alias and emits boolean() calls', () => {
