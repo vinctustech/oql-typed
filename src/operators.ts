@@ -69,7 +69,7 @@ function compareImpl(field: any, op: string, value: unknown): FilterExpr {
 // Overloaded: the FieldRef overload pins T strictly to the field's type.
 // The RelationFieldRef overload accepts any FK type (string for UUID, number for integer PK).
 // NoInfer<T> pins T to the field's type — value must match exactly, not widen.
-// (TypeScript 5.4+)
+// Requires TypeScript 5.4+.
 
 export function eq<T>(field: FieldRef<T>, value: NoInfer<T>): FilterExpr
 export function eq(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): FilterExpr
@@ -111,7 +111,24 @@ export function lte(field: any, value: any): FilterExpr {
 // Logical operators
 // ══════════════════════════════════════════════════════════════════════
 
-export function and(...exprs: FilterExpr[]): FilterExpr {
+// A filter argument: a full FilterExpr OR a bare FieldRef<boolean>
+// (short for `eq(field, true)`, matching SQL/OQL convention `WHERE enabled`).
+export type FilterArg = FilterExpr | FieldRef<boolean>
+
+// Wrap a bare boolean field ref into a FilterExpr if needed.
+function asFilterExpr(arg: FilterArg): FilterExpr {
+  if ('__filterExpr' in (arg as any)) return arg as FilterExpr
+  // Bare FieldRef<boolean> — emit the field name as its own truthy predicate.
+  return {
+    __filterExpr: true,
+    toOQL(ctx) {
+      return resolveField(arg as FieldRef<any>, ctx)
+    },
+  }
+}
+
+export function and(...args: FilterArg[]): FilterExpr {
+  const exprs = args.map(asFilterExpr)
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -120,7 +137,8 @@ export function and(...exprs: FilterExpr[]): FilterExpr {
   }
 }
 
-export function or(...exprs: FilterExpr[]): FilterExpr {
+export function or(...args: FilterArg[]): FilterExpr {
+  const exprs = args.map(asFilterExpr)
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -130,11 +148,12 @@ export function or(...exprs: FilterExpr[]): FilterExpr {
   }
 }
 
-export function not(expr: FilterExpr): FilterExpr {
+export function not(expr: FilterArg): FilterExpr {
+  const inner = asFilterExpr(expr)
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `NOT (${expr.toOQL(ctx)})`
+      return `NOT (${inner.toOQL(ctx)})`
     },
   }
 }
@@ -218,13 +237,14 @@ export function isNotNull(field: FieldRef<any> | RelationFieldRef<Schema, any, '
 
 export function exists(
   relation: RelationFieldRef<Schema, any, any>,
-  filter?: FilterExpr,
+  filter?: FilterArg,
 ): FilterExpr {
+  const inner = filter ? asFilterExpr(filter) : undefined
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      if (filter) {
-        return `EXISTS(${relation.fieldName} [${filter.toOQL(ctx)}])`
+      if (inner) {
+        return `EXISTS(${relation.fieldName} [${inner.toOQL(ctx)}])`
       }
       return `EXISTS(${relation.fieldName})`
     },

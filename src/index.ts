@@ -85,7 +85,7 @@ export {
   FilterContext,
 } from './operators.js'
 
-export type { FilterExpr, OrderExpr, FilterField } from './operators.js'
+export type { FilterExpr, FilterArg, OrderExpr, FilterField } from './operators.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Expressions

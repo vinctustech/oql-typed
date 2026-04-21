@@ -1,5 +1,5 @@
 import type { Schema, InferProjection, ProjectionArg } from './types.js'
-import { FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
+import { FilterContext, and, type FilterExpr, type FilterArg, type OrderExpr } from './operators.js'
 import type { DB, OQLInstance } from './db.js'
 
 // Shared with query.ts but kept separate here to avoid circular imports.
@@ -57,24 +57,24 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
   }
 
   cond(value: unknown): this
-  cond(value: unknown, filter: FilterExpr): this
-  cond(value: unknown, filter?: FilterExpr): this {
+  cond(value: unknown, filter: FilterArg): this
+  cond(value: unknown, filter?: FilterArg): this {
     if (filter !== undefined) {
-      if (value) this.filters.push(filter)
+      if (value) this.filters.push(and(filter))
     } else {
       this.skipNext = !value
     }
     return this
   }
 
-  select(filter: FilterExpr): this {
-    if (!this.skipNext) this.filters.push(filter)
+  select(filter: FilterArg): this {
+    if (!this.skipNext) this.filters.push(and(filter))
     this.skipNext = false
     return this
   }
 
-  where(filter: FilterExpr): this {
-    this.filters.push(filter)
+  where(filter: FilterArg): this {
+    this.filters.push(and(filter))
     return this
   }
 

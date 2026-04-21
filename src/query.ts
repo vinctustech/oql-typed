@@ -5,7 +5,7 @@ import type {
   ProjectionArg,
   OQLProjectionArg,
 } from './types.js'
-import { FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
+import { FilterContext, and, type FilterExpr, type FilterArg, type OrderExpr } from './operators.js'
 import { getTableName, registerStarterFactory, type DB, type EntityHandle, type OQLInstance } from './db.js'
 
 // ══════════════════════════════════════════════════════════════════════
@@ -71,8 +71,9 @@ class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
     this.projectionArgs = projectionArgs
   }
 
-  where(filter: FilterExpr): this {
-    this.filterExpr = filter
+  where(filter: FilterArg): this {
+    // Use and() to normalize a bare FieldRef<boolean> or a full FilterExpr
+    this.filterExpr = and(filter)
     return this
   }
 
@@ -143,7 +144,7 @@ export interface QueryStarter<S extends Schema, Name extends keyof S> {
     ...args: Args
   ): QueryBuilder<S, Name, InferProjection<S, Name, Args>>
 
-  where(filter: FilterExpr): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  where(filter: FilterArg): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   orderBy(...orders: OrderExpr[]): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   limit(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   offset(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>

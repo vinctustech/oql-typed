@@ -278,6 +278,23 @@ describe('runtime: filters', () => {
     assert.equal(r.length, 1) // Bob
   })
 
+  it('bare boolean field ref means "= true"', async () => {
+    // Stores: s1 enabled, s2 disabled — expect only s1
+    const r = await db.store.where(db.store.enabled).many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].name, 'Downtown')
+  })
+
+  it('bare boolean composes with other filters via and()', async () => {
+    // Users with stores where enabled = true via store's bool field
+    const r = await db.store
+      .select('id', 'name')
+      .where(and(db.store.enabled, eq(db.store.color, '#ff0000')))
+      .many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].name, 'Downtown')
+  })
+
   it('& reference operator: &returnTripFor IS NULL', async () => {
     const r = await query(db, 'trip').where(isNull(ref(db.trip.returnTripFor))).many()
     assert.equal(r.length, 2) // t1, t2
