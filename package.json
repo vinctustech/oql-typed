@@ -1,6 +1,6 @@
 {
   "name": "@vinctus/oql-typed",
-  "version": "0.1.0-alpha.9",
+  "version": "0.1.0-alpha.10",
   "description": "Compile-time typed queries for OQL",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +10,9 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "node --import tsx --test src/query.test.ts src/shuttlecontrol.test.ts src/integration.test.ts src/dotted-paths.test.ts src/filtered-subcollections.test.ts src/functions.test.ts src/reference-between-subquery.test.ts src/mutations-querybuilder.test.ts src/alias.test.ts src/codegen.test.ts",
+    "typecheck": "tsc --project tsconfig.typecheck.json",
+    "test:runtime": "node --import tsx --test src/*.test.ts",
+    "test": "npm run typecheck && npm run test:runtime",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

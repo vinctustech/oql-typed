@@ -1,4 +1,10 @@
-// ── Column types ──
+// Schema-object design: relations reference entities by string literal, never by typeof.
+// This eliminates circular reference issues since TypeScript resolves everything via
+// indexed access (Schema[name]) rather than following function return types.
+
+// ══════════════════════════════════════════════════════════════════════
+// Column kinds (runtime discriminator)
+// ══════════════════════════════════════════════════════════════════════
 
 export type ColumnKind =
   | 'uuid'
@@ -25,14 +31,16 @@ export type ColumnKind =
 
 export type RelationKind = 'manyToOne' | 'oneToMany' | 'manyToMany' | 'oneToOne'
 
-// ── Column builder ──
+// ══════════════════════════════════════════════════════════════════════
+// Column builder
+// ══════════════════════════════════════════════════════════════════════
 
-export class ColumnBuilder<T = unknown, Nullable extends boolean = false, PK extends boolean = false> {
+export class Column<T = unknown, Nullable extends boolean = false, PK extends boolean = false> {
   declare readonly _type: T
   declare readonly _nullable: Nullable
   declare readonly _pk: PK
 
-  readonly kind = 'column' as const
+  readonly __kind = 'column' as const
   readonly columnKind: ColumnKind
   readonly isNullable: boolean
   readonly isPrimaryKey: boolean
@@ -44,7 +52,7 @@ export class ColumnBuilder<T = unknown, Nullable extends boolean = false, PK ext
 
   constructor(
     columnKind: ColumnKind,
-    opts?: {
+    opts: {
       nullable?: boolean
       primaryKey?: boolean
       columnAlias?: string
@@ -52,20 +60,20 @@ export class ColumnBuilder<T = unknown, Nullable extends boolean = false, PK ext
       enumValues?: readonly string[]
       precision?: number
       scale?: number
-    },
+    } = {},
   ) {
     this.columnKind = columnKind
-    this.isNullable = opts?.nullable ?? false
-    this.isPrimaryKey = opts?.primaryKey ?? false
-    this.columnAlias = opts?.columnAlias
-    this.enumName = opts?.enumName
-    this.enumValues = opts?.enumValues
-    this.precision = opts?.precision
-    this.scale = opts?.scale
+    this.isNullable = opts.nullable ?? false
+    this.isPrimaryKey = opts.primaryKey ?? false
+    this.columnAlias = opts.columnAlias
+    this.enumName = opts.enumName
+    this.enumValues = opts.enumValues
+    this.precision = opts.precision
+    this.scale = opts.scale
   }
 
-  primaryKey(): ColumnBuilder<T, Nullable, true> {
-    return new ColumnBuilder(this.columnKind, {
+  primaryKey(): Column<T, Nullable, true> {
+    return new Column(this.columnKind, {
       nullable: this.isNullable,
       primaryKey: true,
       columnAlias: this.columnAlias,
@@ -73,11 +81,11 @@ export class ColumnBuilder<T = unknown, Nullable extends boolean = false, PK ext
       enumValues: this.enumValues,
       precision: this.precision,
       scale: this.scale,
-    }) as any
+    }) as Column<T, Nullable, true>
   }
 
-  nullable(): ColumnBuilder<T | null, true, PK> {
-    return new ColumnBuilder(this.columnKind, {
+  nullable(): Column<T | null, true, PK> {
+    return new Column(this.columnKind, {
       nullable: true,
       primaryKey: this.isPrimaryKey,
       columnAlias: this.columnAlias,
@@ -85,11 +93,11 @@ export class ColumnBuilder<T = unknown, Nullable extends boolean = false, PK ext
       enumValues: this.enumValues,
       precision: this.precision,
       scale: this.scale,
-    }) as any
+    }) as Column<T | null, true, PK>
   }
 
-  column(alias: string): ColumnBuilder<T, Nullable, PK> {
-    return new ColumnBuilder(this.columnKind, {
+  column(alias: string): Column<T, Nullable, PK> {
+    return new Column(this.columnKind, {
       nullable: this.isNullable,
       primaryKey: this.isPrimaryKey,
       columnAlias: alias,
@@ -97,297 +105,144 @@ export class ColumnBuilder<T = unknown, Nullable extends boolean = false, PK ext
       enumValues: this.enumValues,
       precision: this.precision,
       scale: this.scale,
-    }) as any
+    }) as Column<T, Nullable, PK>
   }
 }
 
-// ── Column type constructors ──
+// ══════════════════════════════════════════════════════════════════════
+// Column constructors
+// ══════════════════════════════════════════════════════════════════════
 
-export function uuid() {
-  return new ColumnBuilder<string>('uuid')
+export const uuid = () => new Column<string>('uuid')
+export const text = () => new Column<string>('text')
+export const integer = () => new Column<number>('integer')
+const bigintCol = () => new Column<bigint>('bigint')
+export { bigintCol as bigint }
+export const float = () => new Column<number>('float')
+const booleanCol = () => new Column<boolean>('boolean')
+export { booleanCol as boolean }
+export const timestamp = () => new Column<Date>('timestamp')
+export const date = () => new Column<Date>('date')
+export const time = () => new Column<string>('time')
+export const interval = () => new Column<string>('interval')
+export const json = <T = unknown>() => new Column<T>('json')
+export const textArray = () => new Column<string[]>('text[]')
+export const integerArray = () => new Column<number[]>('integer[]')
+export const decimal = (precision?: number, scale?: number) =>
+  new Column<bigint>('decimal', { precision, scale })
+
+export function enumType<T extends string>(name: string, values: readonly T[]): Column<T, false, false> {
+  return new Column<T>('enum', { enumName: name, enumValues: values })
 }
 
-export function text() {
-  return new ColumnBuilder<string>('text')
-}
+// ══════════════════════════════════════════════════════════════════════
+// Relation builder — target is a STRING LITERAL (no TS reference)
+// ══════════════════════════════════════════════════════════════════════
 
-export function integer() {
-  return new ColumnBuilder<number>('integer')
-}
-
-export function bigint_() {
-  return new ColumnBuilder<bigint>('bigint')
-}
-export { bigint_ as bigint }
-
-export function float() {
-  return new ColumnBuilder<number>('float')
-}
-
-export function boolean_() {
-  return new ColumnBuilder<boolean>('boolean')
-}
-export { boolean_ as boolean }
-
-export function timestamp() {
-  return new ColumnBuilder<Date>('timestamp')
-}
-
-export function date() {
-  return new ColumnBuilder<Date>('date')
-}
-
-export function time() {
-  return new ColumnBuilder<string>('time')
-}
-
-export function interval() {
-  return new ColumnBuilder<string>('interval')
-}
-
-export function json<T = unknown>() {
-  return new ColumnBuilder<T>('json')
-}
-
-export function textArray() {
-  return new ColumnBuilder<string[]>('text[]')
-}
-
-export function integerArray() {
-  return new ColumnBuilder<number[]>('integer[]')
-}
-
-export function decimal(precision?: number, scale?: number) {
-  return new ColumnBuilder<bigint>('decimal', { precision, scale })
-}
-
-export function enumType<T extends string>(name: string, values: readonly T[]) {
-  return new ColumnBuilder<T>('enum', { enumName: name, enumValues: values })
-}
-
-// ── Relation builder ──
-
-export class RelationBuilder<
-  _Target extends EntityDefinition = any,
+export class Relation<
+  Target extends string = string,
   Kind extends RelationKind = RelationKind,
   Nullable extends boolean = false,
 > {
-  declare readonly _target: _Target
+  declare readonly _target: Target
   declare readonly _kind: Kind
   declare readonly _nullable: Nullable
 
-  readonly kind = 'relation' as const
+  readonly __kind = 'relation' as const
+  readonly target: Target
   readonly relationKind: Kind
-  readonly target: () => EntityInstance<any>
   readonly isNullable: boolean
-  readonly options: {
-    column?: string
-    junction?: string
-    junctionEntity?: string
-    reference?: string
-  }
+  readonly column: string | undefined
+  readonly junction: string | undefined
+  readonly reference: string | undefined
 
   constructor(
+    target: Target,
     relationKind: Kind,
-    target: () => EntityInstance<any>,
-    options: {
-      column?: string
-      junction?: string
-      junctionEntity?: string
-      reference?: string
-      nullable?: boolean
-    } = {},
+    opts: { nullable?: boolean; column?: string; junction?: string; reference?: string } = {},
   ) {
-    this.relationKind = relationKind
     this.target = target
-    this.isNullable = options.nullable ?? false
-    this.options = {
-      column: options.column,
-      junction: options.junction,
-      junctionEntity: options.junctionEntity,
-      reference: options.reference,
-    }
+    this.relationKind = relationKind
+    this.isNullable = opts.nullable ?? false
+    this.column = opts.column
+    this.junction = opts.junction
+    this.reference = opts.reference
   }
 
-  nullable(): RelationBuilder<_Target, Kind, true> {
-    return new RelationBuilder(this.relationKind, this.target, {
-      ...this.options,
+  nullable(): Relation<Target, Kind, true> {
+    return new Relation(this.target, this.relationKind, {
       nullable: true,
-    }) as any
-  }
-
-  column(alias: string): RelationBuilder<_Target, Kind, Nullable> {
-    return new RelationBuilder(this.relationKind, this.target, {
-      ...this.options,
-      column: alias,
-    }) as any
+      column: this.column,
+      junction: this.junction,
+      reference: this.reference,
+    }) as Relation<Target, Kind, true>
   }
 }
 
-// ── Relation constructors ──
-
-export function manyToOne<D extends EntityDefinition>(
-  target: () => EntityInstance<D>,
-  options?: { column?: string },
-): RelationBuilder<D, 'manyToOne'> {
-  return new RelationBuilder('manyToOne', target, options)
+export function manyToOne<Target extends string>(
+  target: Target,
+  opts?: { column?: string },
+): Relation<Target, 'manyToOne', false> {
+  return new Relation(target, 'manyToOne', opts)
 }
 
-export function oneToMany<D extends EntityDefinition>(
-  target: () => EntityInstance<D>,
-): RelationBuilder<D, 'oneToMany'> {
-  return new RelationBuilder('oneToMany', target)
+export function oneToMany<Target extends string>(target: Target): Relation<Target, 'oneToMany', false> {
+  return new Relation(target, 'oneToMany')
 }
 
-export function manyToMany<D extends EntityDefinition>(
-  target: () => EntityInstance<D>,
-  options: { junction: string; junctionEntity?: string },
-): RelationBuilder<D, 'manyToMany'> {
-  return new RelationBuilder('manyToMany', target, options)
+export function manyToMany<Target extends string>(
+  target: Target,
+  opts: { junction: string },
+): Relation<Target, 'manyToMany', false> {
+  return new Relation(target, 'manyToMany', opts)
 }
 
-export function oneToOne<D extends EntityDefinition>(
-  target: () => EntityInstance<D>,
-  options?: { reference?: string },
-): RelationBuilder<D, 'oneToOne'> {
-  return new RelationBuilder('oneToOne', target, options)
+export function oneToOne<Target extends string>(
+  target: Target,
+  opts?: { reference?: string },
+): Relation<Target, 'oneToOne', false> {
+  return new Relation(target, 'oneToOne', opts)
 }
 
-// ── Entity definition ──
+// ══════════════════════════════════════════════════════════════════════
+// Schema + entity metadata
+// ══════════════════════════════════════════════════════════════════════
 
-export type EntityDefinition = Record<string, ColumnBuilder<any, any, any> | RelationBuilder<any, any, any>>
+export type FieldDef = Column<any, any, any> | Relation<any, any, any>
+export type EntityDef = { readonly [fieldName: string]: FieldDef }
+export type SchemaDef = { readonly [entityName: string]: EntityDef }
 
-export interface FieldRef<T = unknown> {
-  readonly __fieldRef: true
-  readonly _type: T
-  readonly entityName: string
-  readonly fieldName: string
-  readonly builder: ColumnBuilder<any, any, any> | RelationBuilder<any, any, any>
-}
-
-export interface RelationFieldRef<Target extends EntityDefinition = any, Kind extends RelationKind = RelationKind> {
-  readonly __relationRef: true
-  readonly _target: Target
-  readonly _kind: Kind
-  readonly entityName: string
-  readonly fieldName: string
-  readonly builder: RelationBuilder<any, any, any>
-}
-
-// For manyToOne relations, expose the target entity's fields for dotted path access
-type ManyToOneFieldRef<Target extends EntityDefinition, Kind extends RelationKind> =
-  RelationFieldRef<Target, Kind> & DottedFieldRefsFor<Target>
-
-// Dotted field refs: each field on the target becomes accessible, building up the dotted path
-type DottedFieldRefsFor<D extends EntityDefinition> = {
-  readonly [K in keyof D]: D[K] extends ColumnBuilder<infer T, infer N, any>
-    ? FieldRef<N extends true ? T | null : T>
-    : D[K] extends RelationBuilder<infer Target, infer Kind, any>
-      ? Kind extends 'manyToOne'
-        ? ManyToOneFieldRef<Target, Kind>
-        : RelationFieldRef<Target, Kind>
-      : never
-}
-
-type FieldRefsFor<D extends EntityDefinition> = {
-  readonly [K in keyof D]: D[K] extends ColumnBuilder<infer T, infer N, any>
-    ? FieldRef<N extends true ? T | null : T>
-    : D[K] extends RelationBuilder<infer Target, infer Kind, any>
-      ? Kind extends 'manyToOne'
-        ? ManyToOneFieldRef<Target, Kind>
-        : RelationFieldRef<Target, Kind>
-      : never
-}
-
-export type EntityInstance<D extends EntityDefinition = EntityDefinition> = {
-  readonly __entity: true
-  readonly entityName: string
-  readonly tableName: string
+// A schema can optionally associate a table name with each entity.
+// Simple form (name = table name): define a plain object.
+// Extended form: wrap with entity() to specify a table name.
+export interface EntityMeta<D extends EntityDef = EntityDef> {
+  readonly __meta: true
+  readonly tableName: string | undefined
   readonly definition: D
-} & FieldRefsFor<D>
-
-// Create a relation ref that supports dotted path access for manyToOne relations
-function createRelationRef(
-  entityName: string,
-  fieldName: string,
-  builder: RelationBuilder<any, any, any>,
-  pathPrefix?: string,
-): any {
-  const fullPath = pathPrefix ? `${pathPrefix}.${fieldName}` : fieldName
-
-  const base = {
-    __relationRef: true,
-    entityName,
-    fieldName: fullPath,
-    builder,
-  }
-
-  // For manyToOne relations, create a proxy that resolves target entity fields on access
-  if (builder.relationKind === 'manyToOne') {
-    return new Proxy(base, {
-      get(target, prop, receiver) {
-        if (prop in target) return Reflect.get(target, prop, receiver)
-
-        // Lazily resolve the target entity's fields
-        const targetEntity = builder.target()
-        const targetDef = targetEntity.definition
-        const targetField = targetDef[prop as string]
-
-        if (!targetField) return undefined
-
-        if (targetField.kind === 'column') {
-          return {
-            __fieldRef: true,
-            entityName: targetEntity.entityName,
-            fieldName: `${fullPath}.${prop as string}`,
-            builder: targetField,
-          }
-        } else {
-          // Nested relation — recurse
-          return createRelationRef(
-            targetEntity.entityName,
-            prop as string,
-            targetField as RelationBuilder<any, any, any>,
-            fullPath,
-          )
-        }
-      },
-    })
-  }
-
-  return base
 }
 
-// Overloads: entity(name, definition) or entity(name, tableName, definition)
-export function entity<D extends EntityDefinition>(name: string, definition: D): EntityInstance<D>
-export function entity<D extends EntityDefinition>(name: string, tableName: string, definition: D): EntityInstance<D>
-export function entity<D extends EntityDefinition>(
-  name: string,
+export function entity<D extends EntityDef>(definition: D): EntityMeta<D>
+export function entity<D extends EntityDef>(tableName: string, definition: D): EntityMeta<D>
+export function entity<D extends EntityDef>(
   tableNameOrDef: string | D,
   maybeDef?: D,
-): EntityInstance<D> {
-  const tableName = typeof tableNameOrDef === 'string' ? tableNameOrDef : name
-  const definition = typeof tableNameOrDef === 'string' ? maybeDef! : tableNameOrDef
+): EntityMeta<D> {
+  const tableName = typeof tableNameOrDef === 'string' ? tableNameOrDef : undefined
+  const definition = typeof tableNameOrDef === 'string' ? (maybeDef as D) : tableNameOrDef
+  return { __meta: true, tableName, definition }
+}
 
-  const instance: any = {
-    __entity: true,
-    entityName: name,
-    tableName,
-    definition,
-  }
+// An entry in the schema object can be either a plain entity definition
+// OR an entity meta wrapper (for custom table names).
+export type SchemaEntry = EntityDef | EntityMeta
 
-  for (const [key, builder] of Object.entries(definition)) {
-    if (builder.kind === 'column') {
-      instance[key] = {
-        __fieldRef: true,
-        entityName: name,
-        fieldName: key,
-        builder,
-      } satisfies Omit<FieldRef, '_type'>
-    } else {
-      instance[key] = createRelationRef(name, key, builder as RelationBuilder<any, any, any>)
-    }
-  }
+// Resolves to EntityDef whether the entry is raw or wrapped.
+export type Unwrap<E> = E extends EntityMeta<infer D> ? D : E extends EntityDef ? E : never
 
-  return instance
+// ══════════════════════════════════════════════════════════════════════
+// defineSchema — preserves literal types via `const` generic modifier
+// ══════════════════════════════════════════════════════════════════════
+
+export function defineSchema<const S extends Record<string, SchemaEntry>>(schema: S): S {
+  return schema
 }

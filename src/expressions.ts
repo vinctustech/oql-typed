@@ -1,7 +1,9 @@
-import type { FieldRef } from './schema.js'
+import type { FieldRef, OQLProjectionArg } from './types.js'
 import type { FilterContext, FilterExpr } from './operators.js'
 
-// ── Expression that can be used in both projections and filter positions ──
+// ══════════════════════════════════════════════════════════════════════
+// OQLExpr — can appear in both filter and projection positions
+// ══════════════════════════════════════════════════════════════════════
 
 export interface OQLExpr<T = unknown> {
   readonly __oqlExpr: true
@@ -9,23 +11,18 @@ export interface OQLExpr<T = unknown> {
   toOQL(ctx: FilterContext): string
 }
 
-// ── Function call expression: fn('concat', field1, raw("' '"), field2) ──
+// ══════════════════════════════════════════════════════════════════════
+// fn(name, ...args) — function call, e.g. fn('concat', a, raw("' '"), b)
+// ══════════════════════════════════════════════════════════════════════
 
-type FnArg = FieldRef<any> | OQLExpr<any> | string | number | boolean
+type FnArg = FieldRef<any> | OQLExpr<any> | string | number | boolean | { fieldName: string }
 
-function renderArg(arg: FnArg, ctx: FilterContext): string {
-  if (typeof arg === 'object' && '__oqlExpr' in arg) {
-    return arg.toOQL(ctx)
+function renderFnArg(arg: FnArg, ctx: FilterContext): string {
+  if (typeof arg === 'object' && arg !== null) {
+    if ('__oqlExpr' in arg) return (arg as OQLExpr).toOQL(ctx)
+    if ('fieldName' in arg) return arg.fieldName
   }
-  if (typeof arg === 'object' && '__fieldRef' in arg) {
-    return (arg as FieldRef).fieldName
-  }
-  if (typeof arg === 'object' && '__relationRef' in arg) {
-    return (arg as any).fieldName
-  }
-  if (typeof arg === 'string') {
-    return ctx.addParam(arg)
-  }
+  if (typeof arg === 'string') return ctx.addParam(arg)
   return String(arg)
 }
 
@@ -33,94 +30,101 @@ export function fn<T = unknown>(name: string, ...args: FnArg[]): OQLExpr<T> & Fi
   const expr: any = {
     __oqlExpr: true,
     __fieldRef: true,
+    _type: undefined,
     entityName: '',
-    fieldName: '', // filled dynamically via toOQL
+    fieldName: '',
     builder: null,
     toOQL(ctx: FilterContext): string {
-      const renderedArgs = args.map((a) => renderArg(a, ctx))
-      return `${name}(${renderedArgs.join(', ')})`
+      return `${name}(${args.map((a) => renderFnArg(a, ctx)).join(', ')})`
     },
   }
-  // For use in comparison operators (eq, ilike, etc.), override fieldName generation
-  // The operators use field.fieldName, but fn() needs to generate the full call via toOQL
   return expr
 }
 
-// ── Reference operator: ref(trip.returnTripFor) → &returnTripFor ──
+// ══════════════════════════════════════════════════════════════════════
+// raw(oql) — escape hatch for anything without a typed wrapper
+// ══════════════════════════════════════════════════════════════════════
 
-export function ref<T = unknown>(field: FieldRef<any>): OQLExpr<T> & FieldRef<T> {
+export function raw<T = unknown>(oql: string): OQLExpr<T> & FieldRef<T> & OQLProjectionArg {
   return {
     __oqlExpr: true,
     __fieldRef: true,
-    _type: undefined as any,
-    entityName: field.entityName,
+    _type: undefined,
+    entityName: '',
+    fieldName: oql,
+    builder: null,
+    toOQL(_ctx: FilterContext): string {
+      return oql
+    },
+  } as any
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ref(field) — & reference operator: &returnTripFor IS NULL
+// ══════════════════════════════════════════════════════════════════════
+
+export function ref<T = unknown>(field: { fieldName: string; builder?: any }): OQLExpr<T> & FieldRef<T> {
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined,
+    entityName: '',
     fieldName: `&${field.fieldName}`,
-    builder: field.builder,
+    builder: field.builder ?? null,
     toOQL(_ctx: FilterContext): string {
       return `&${field.fieldName}`
     },
   } as any
 }
 
-// ── Subquery expression: subquery(entity, ['count(*)']) → (entity {count(*)}) ──
+// ══════════════════════════════════════════════════════════════════════
+// subquery(relation, [projection], filter?) — (drivers {count(*)}) = 0
+// ══════════════════════════════════════════════════════════════════════
 
 export function subquery<T = unknown>(
   relation: { fieldName: string } | { entityName: string },
   projection: string[],
   filter?: FilterExpr,
 ): OQLExpr<T> & FieldRef<T> {
-  // Use fieldName for relation refs (e.g., vehicle.drivers → 'drivers')
-  // Fall back to entityName for entity refs
-  const name = 'fieldName' in relation && relation.fieldName ? relation.fieldName : (relation as any).entityName
-  const expr: any = {
+  const name =
+    'fieldName' in relation && relation.fieldName ? relation.fieldName : (relation as any).entityName
+  return {
     __oqlExpr: true,
     __fieldRef: true,
-    _type: undefined as any,
+    _type: undefined,
     entityName: '',
     fieldName: '',
     builder: null,
     toOQL(ctx: FilterContext): string {
       let q = `${name} {${projection.join(' ')}}`
-      if (filter) {
-        q += ` [${filter.toOQL(ctx)}]`
-      }
+      if (filter) q += ` [${filter.toOQL(ctx)}]`
       return `(${q})`
-    },
-  }
-  return expr
-}
-
-// ── Alias expression for projections: alias('returnTripId', trip.returnTrip.id) → returnTripId: (returnTrip.id) ──
-
-export function alias<T = unknown>(label: string, field: FieldRef<any> | OQLExpr<any>): OQLExpr<T> & FieldRef<T> {
-  return {
-    __oqlExpr: true,
-    __fieldRef: true,
-    _type: undefined as any,
-    entityName: '',
-    fieldName: label,
-    builder: null as any,
-    toOQL(ctx: FilterContext): string {
-      if ('__oqlExpr' in field && typeof (field as any).toOQL === 'function') {
-        return `${label}: (${(field as any).toOQL(ctx)})`
-      }
-      return `${label}: (${(field as FieldRef).fieldName})`
     },
   } as any
 }
 
-// ── Raw OQL expression: raw("' '"), raw('count: sum(seats)') ──
+// ══════════════════════════════════════════════════════════════════════
+// alias(label, expr) — projection with alias: returnTripId: (returnTrip.id)
+//
+// Parameterized by the RESULT SHAPE so the projection result is typed:
+// alias<{ returnTripId: string }>('returnTripId', ...) contributes
+// { returnTripId: string } to the inferred projection.
+// ══════════════════════════════════════════════════════════════════════
 
-export function raw<T = unknown>(oql: string): OQLExpr<T> & FieldRef<T> {
+export function alias<Shape extends Record<string, unknown>>(
+  label: string,
+  field: FieldRef<any> | OQLExpr<any>,
+): OQLExpr<Shape> & OQLProjectionArg & { _projectionType: Shape } {
+  const inner: any = field
   return {
     __oqlExpr: true,
-    __fieldRef: true,
     _type: undefined as any,
-    entityName: '',
-    fieldName: oql,
-    builder: null as any,
-    toOQL(_ctx: FilterContext): string {
-      return oql
+    _projectionType: undefined as any,
+    toOQL(ctx: FilterContext): string {
+      if ('__oqlExpr' in inner && typeof inner.toOQL === 'function') {
+        return `${label}: (${inner.toOQL(ctx)})`
+      }
+      return `${label}: (${(inner as FieldRef).fieldName})`
     },
   } as any
 }

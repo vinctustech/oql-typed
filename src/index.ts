@@ -1,14 +1,15 @@
+// ══════════════════════════════════════════════════════════════════════
 // Schema definition
+// ══════════════════════════════════════════════════════════════════════
 export {
+  defineSchema,
   entity,
   uuid,
   text,
   integer,
-  bigint_,
-  bigint_ as bigint,
+  bigint,
   float,
-  boolean_,
-  boolean_ as boolean,
+  boolean,
   timestamp,
   date,
   time,
@@ -22,20 +23,45 @@ export {
   oneToMany,
   manyToMany,
   oneToOne,
-  ColumnBuilder,
-  RelationBuilder,
+  Column,
+  Relation,
 } from './schema.js'
 
-export type { EntityDefinition, EntityInstance, FieldRef, RelationFieldRef } from './schema.js'
+export type { ColumnKind, RelationKind, EntityDef, EntityMeta, SchemaDef, SchemaEntry, FieldDef, Unwrap } from './schema.js'
 
-// Type inference
-export type { InferProjection, InferAllScalars, ProjectionArg, FilteredRelationSpec, Prettify } from './types.js'
+// ══════════════════════════════════════════════════════════════════════
+// Type plumbing
+// ══════════════════════════════════════════════════════════════════════
+export type {
+  Schema,
+  FieldRef,
+  RelationFieldRef,
+  ManyToOneFieldRef,
+  FieldRefsFor,
+  InferProjection,
+  InferAllScalars,
+  InferDefaultProjection,
+  InferColumnType,
+  ProjectionArg,
+  FilteredRelationSpec,
+  Prettify,
+} from './types.js'
 
+// ══════════════════════════════════════════════════════════════════════
+// DB / typedOQL
+// ══════════════════════════════════════════════════════════════════════
+export { typedOQL } from './db.js'
+export type { DB, EntityHandle, OQLInstance } from './db.js'
+
+// ══════════════════════════════════════════════════════════════════════
 // Query
+// ══════════════════════════════════════════════════════════════════════
 export { query } from './query.js'
-export type { OQLInstance } from './query.js'
+export type { QueryStarter } from './query.js'
 
+// ══════════════════════════════════════════════════════════════════════
 // Operators
+// ══════════════════════════════════════════════════════════════════════
 export {
   eq,
   ne,
@@ -56,24 +82,24 @@ export {
   exists,
   asc,
   desc,
+  FilterContext,
 } from './operators.js'
 
-export type { FilterExpr, OrderExpr } from './operators.js'
+export type { FilterExpr, OrderExpr, FilterField } from './operators.js'
 
-// Expressions (function calls, raw OQL)
+// ══════════════════════════════════════════════════════════════════════
+// Expressions
+// ══════════════════════════════════════════════════════════════════════
 export { fn, raw, ref, subquery, alias } from './expressions.js'
 export type { OQLExpr } from './expressions.js'
 
+// ══════════════════════════════════════════════════════════════════════
 // Mutations
+// ══════════════════════════════════════════════════════════════════════
 export { insert, update } from './mutations.js'
-export type { OQLMutationInstance, InsertInput, UpdateInput } from './mutations.js'
+export type { InsertInput, UpdateInput } from './mutations.js'
 
+// ══════════════════════════════════════════════════════════════════════
 // Conditional QueryBuilder
+// ══════════════════════════════════════════════════════════════════════
 export { queryBuilder } from './query-builder.js'
-
-// DM generation
-export { generateDM } from './generate-dm.js'
-
-// DM parsing / codegen
-export { parseDM, parseDMAndGenerate, generateSchemaTS } from './parse-dm.js'
-export type { ParsedDataModel } from './parse-dm.js'

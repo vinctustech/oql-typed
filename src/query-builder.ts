@@ -1,34 +1,30 @@
-import type { EntityDefinition, EntityInstance } from './schema.js'
-import type { InferAllScalars, InferProjection, ProjectionArg } from './types.js'
+import type { Schema, InferProjection, ProjectionArg } from './types.js'
 import { FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
-import type { OQLInstance } from './query.js'
+import type { DB, OQLInstance } from './db.js'
 
-// ── Build the selection string from variadic args ──
-// (re-exported from query.ts logic, duplicated here to avoid circular deps)
-
-function isFilteredSpec(value: any): value is { fields: readonly any[]; where?: FilterExpr; orderBy?: readonly OrderExpr[] } {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) && 'fields' in value
+// Shared with query.ts but kept separate here to avoid circular imports.
+function isFilteredSpec(
+  v: any,
+): v is { fields: readonly any[]; where?: FilterExpr; orderBy?: readonly OrderExpr[] } {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) && 'fields' in v
 }
 
-function buildProjection<D extends EntityDefinition>(args: readonly ProjectionArg<D>[], ctx: FilterContext): string {
+function buildProjection(args: readonly any[], ctx: FilterContext): string {
   const parts: string[] = []
-
   for (const arg of args) {
     if (typeof arg === 'string') {
-      parts.push(arg as string)
+      parts.push(arg)
     } else if (typeof arg === 'object' && arg !== null && '__oqlExpr' in arg) {
       parts.push((arg as any).toOQL(ctx))
     } else if (typeof arg === 'object' && arg !== null) {
       for (const [key, value] of Object.entries(arg as Record<string, any>)) {
         if (isFilteredSpec(value)) {
-          let projection = `${key} {${buildProjection(value.fields, ctx)}}`
-          if (value.where) {
-            projection += ` [${value.where.toOQL(ctx)}]`
-          }
+          let s = `${key} {${buildProjection(value.fields, ctx)}}`
+          if (value.where) s += ` [${value.where.toOQL(ctx)}]`
           if (value.orderBy && value.orderBy.length > 0) {
-            projection += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
+            s += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
           }
-          parts.push(projection)
+          parts.push(s)
         } else if (Array.isArray(value) && value.length > 0) {
           parts.push(`${key} {${buildProjection(value, ctx)}}`)
         } else {
@@ -37,29 +33,26 @@ function buildProjection<D extends EntityDefinition>(args: readonly ProjectionAr
       }
     }
   }
-
   return parts.join(' ')
 }
 
-// ── Conditional QueryBuilder ──
+// ══════════════════════════════════════════════════════════════════════
+// CondQueryBuilder — conditional WHERE via .cond()
+// ══════════════════════════════════════════════════════════════════════
 
-class CondQueryBuilder<D extends EntityDefinition, Result> {
+class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
   private readonly oql: OQLInstance
-  private readonly entityName: string
-  private readonly projectionArgs: readonly ProjectionArg<D>[] | undefined
+  private readonly entityName: Name
+  private readonly projectionArgs: readonly any[]
   private readonly filters: FilterExpr[] = []
   private readonly orderExprs: OrderExpr[] = []
   private limitVal: number | undefined
   private offsetVal: number | undefined
   private skipNext = false
 
-  constructor(
-    oql: OQLInstance,
-    entity: EntityInstance<D>,
-    projectionArgs: readonly ProjectionArg<D>[] | undefined,
-  ) {
+  constructor(oql: OQLInstance, entityName: Name, projectionArgs: readonly any[]) {
     this.oql = oql
-    this.entityName = entity.entityName
+    this.entityName = entityName
     this.projectionArgs = projectionArgs
   }
 
@@ -67,21 +60,15 @@ class CondQueryBuilder<D extends EntityDefinition, Result> {
   cond(value: unknown, filter: FilterExpr): this
   cond(value: unknown, filter?: FilterExpr): this {
     if (filter !== undefined) {
-      // Two-arg form: cond(value, filter) — add filter if value is truthy
-      if (value) {
-        this.filters.push(filter)
-      }
+      if (value) this.filters.push(filter)
     } else {
-      // One-arg form: cond(value) — next .select() is skipped if falsy
       this.skipNext = !value
     }
     return this
   }
 
   select(filter: FilterExpr): this {
-    if (!this.skipNext) {
-      this.filters.push(filter)
-    }
+    if (!this.skipNext) this.filters.push(filter)
     this.skipNext = false
     return this
   }
@@ -108,28 +95,25 @@ class CondQueryBuilder<D extends EntityDefinition, Result> {
 
   private build(): { queryStr: string; params: Record<string, unknown> } {
     const ctx = new FilterContext()
-    let q = this.entityName
-
-    if (this.projectionArgs) {
-      q += ` {${buildProjection(this.projectionArgs, ctx)}}`
-    }
+    let q = String(this.entityName)
+    q += ` {${buildProjection(this.projectionArgs, ctx)}}`
 
     if (this.filters.length > 0) {
-      const combined = this.filters.map((f) => f.toOQL(ctx)).join(' AND ')
-      q += ` [${combined}]`
+      q += ` [${this.filters.map((f) => f.toOQL(ctx)).join(' AND ')}]`
     }
-
     if (this.orderExprs.length > 0) {
       q += ` <${this.orderExprs.map((o) => o.toOQL()).join(', ')}>`
     }
-
     if (this.offsetVal !== undefined || this.limitVal !== undefined) {
       const limit = this.limitVal ?? ''
       const offset = this.offsetVal ?? ''
       q += ` |${limit}${offset !== '' ? `, ${offset}` : ''}|`
     }
-
     return { queryStr: q, params: ctx.getParams() }
+  }
+
+  toOQL(): { queryStr: string; params: Record<string, unknown> } {
+    return this.build()
   }
 
   async one(): Promise<Result | undefined> {
@@ -146,27 +130,26 @@ class CondQueryBuilder<D extends EntityDefinition, Result> {
     const { queryStr, params } = this.build()
     return this.oql.count(queryStr, params)
   }
-
-  toOQL(): { queryStr: string; params: Record<string, unknown> } {
-    return this.build()
-  }
 }
 
-// ── Public queryBuilder function ──
+// ══════════════════════════════════════════════════════════════════════
+// queryBuilder() — public entry, requires .select() first
+// ══════════════════════════════════════════════════════════════════════
 
-interface QueryBuilderStarter<D extends EntityDefinition> {
-  select<const Args extends readonly ProjectionArg<D>[]>(
+interface QueryBuilderStarter<S extends Schema, Name extends keyof S> {
+  select<const Args extends readonly ProjectionArg<S, Name>[]>(
     ...args: Args
-  ): CondQueryBuilder<D, InferProjection<D, Args>>
+  ): CondQueryBuilder<S, Name, InferProjection<S, Name, Args>>
 }
 
-export function queryBuilder<D extends EntityDefinition>(
-  oql: OQLInstance,
-  entity: EntityInstance<D>,
-): QueryBuilderStarter<D> {
+export function queryBuilder<S extends Schema, Name extends keyof S & string>(
+  db: DB<S>,
+  entityName: Name,
+): QueryBuilderStarter<S, Name> {
+  const oql = db.__oql as OQLInstance
   return {
-    select<const Args extends readonly ProjectionArg<D>[]>(...args: Args) {
-      return new CondQueryBuilder<D, InferProjection<D, Args>>(oql, entity, args)
+    select<const Args extends readonly ProjectionArg<S, Name>[]>(...args: Args) {
+      return new CondQueryBuilder<S, Name, InferProjection<S, Name, Args>>(oql, entityName, args)
     },
   }
 }

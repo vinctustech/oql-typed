@@ -1,7 +1,8 @@
-import type { ColumnBuilder, EntityDefinition, RelationBuilder } from './schema.js'
-import type { FilterExpr, OrderExpr } from './operators.js'
+import type { Column, Relation, RelationKind, SchemaEntry, Unwrap } from './schema.js'
 
-// ── Utility types ──
+// ══════════════════════════════════════════════════════════════════════
+// Utility types
+// ══════════════════════════════════════════════════════════════════════
 
 export type Prettify<T> = { [K in keyof T]: T[K] } & {}
 
@@ -9,98 +10,190 @@ type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
   ? I
   : never
 
-// ── Extract scalar vs relation fields from an entity definition ──
+// ══════════════════════════════════════════════════════════════════════
+// Schema type — what consumers pass to typedOQL()
+// ══════════════════════════════════════════════════════════════════════
 
-export type ScalarKeys<D extends EntityDefinition> = {
-  [K in keyof D]: D[K] extends ColumnBuilder<any, any, any> ? K : never
+export type Schema = Record<string, SchemaEntry>
+
+// ══════════════════════════════════════════════════════════════════════
+// Field refs — what you get from db.user.id
+// ══════════════════════════════════════════════════════════════════════
+
+export interface FieldRef<T = unknown> {
+  readonly __fieldRef: true
+  readonly _type: T
+  readonly entityName: string
+  readonly fieldName: string
+  readonly builder: Column<any, any, any>
+}
+
+export interface RelationFieldRef<S extends Schema = Schema, Target extends keyof S = keyof S, Kind extends RelationKind = RelationKind> {
+  readonly __relationRef: true
+  readonly _schema: S
+  readonly _target: Target
+  readonly _kind: Kind
+  readonly entityName: string
+  readonly fieldName: string
+  readonly builder: Relation<any, any, any>
+}
+
+// manyToOne also exposes target entity's fields (dotted path) via intersection
+export type ManyToOneFieldRef<S extends Schema, Target extends keyof S> =
+  RelationFieldRef<S, Target, 'manyToOne'> & FieldRefsFor<S, Target>
+
+// ══════════════════════════════════════════════════════════════════════
+// Extract scalar / relation fields from an entity's definition
+// ══════════════════════════════════════════════════════════════════════
+
+export type ScalarKeys<D> = {
+  [K in keyof D]: D[K] extends Column<any, any, any> ? K : never
 }[keyof D]
 
-export type RelationKeys<D extends EntityDefinition> = {
-  [K in keyof D]: D[K] extends RelationBuilder<any, any, any> ? K : never
+export type RelationKeys<D> = {
+  [K in keyof D]: D[K] extends Relation<any, any, any> ? K : never
 }[keyof D]
 
-// ── Infer the TS type of a single column ──
+export type NonPKScalarKeys<D> = {
+  [K in keyof D]: D[K] extends Column<any, any, infer PK> ? (PK extends true ? never : K) : never
+}[keyof D]
 
-export type InferColumnType<C> = C extends ColumnBuilder<infer T, any, any> ? T : never
+// ══════════════════════════════════════════════════════════════════════
+// FieldRefsFor — what you get when you access an entity handle
+// ══════════════════════════════════════════════════════════════════════
 
-// ── Infer all scalar fields as a plain object ──
+export type FieldRefsFor<S extends Schema, Name extends keyof S> = {
+  readonly [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, infer N, any>
+    ? FieldRef<N extends true ? T | null : T>
+    : Unwrap<S[Name]>[K] extends Relation<infer Target, infer Kind, any>
+      ? Target extends keyof S
+        ? Kind extends 'manyToOne'
+          ? ManyToOneFieldRef<S, Target>
+          : RelationFieldRef<S, Target, Kind>
+        : never
+      : never
+}
 
-export type InferAllScalars<D extends EntityDefinition> = Prettify<{
-  [K in ScalarKeys<D>]: InferColumnType<D[K]>
+// ══════════════════════════════════════════════════════════════════════
+// Column type inference
+// ══════════════════════════════════════════════════════════════════════
+
+export type InferColumnType<C> = C extends Column<infer T, any, any> ? T : never
+
+// All scalar fields of an entity, respecting nullability
+export type InferAllScalars<D> = Prettify<{
+  [K in ScalarKeys<D>]: D[K] extends Column<infer T, infer N, any>
+    ? N extends true ? T | null : T
+    : never
 }>
 
-// ── Projection argument types ──
+// ══════════════════════════════════════════════════════════════════════
+// Projection argument types (what .select() accepts)
+// ══════════════════════════════════════════════════════════════════════
 
-// A projection arg is either a scalar field name (string) or a relation spec (object)
-export type ProjectionArg<D extends EntityDefinition> =
-  | ScalarKeys<D>
-  | RelationSpec<D>
-
-// Filtered relation spec: fields + optional where/orderBy
-export interface FilteredRelationSpec<Target extends EntityDefinition> {
-  readonly fields: readonly ProjectionArg<Target>[]
-  readonly where?: FilterExpr
-  readonly orderBy?: readonly OrderExpr[]
+// An OQL expression (from raw(), fn(), alias(), subquery()) can appear as a projection arg
+export interface OQLProjectionArg {
+  readonly __oqlExpr: true
+  readonly _projectionType?: Record<string, unknown>
 }
 
-// A relation spec maps relation field names to either:
-// - an array of projection args (simple)
-// - a { fields, where?, orderBy? } object (filtered)
-type RelationSpec<D extends EntityDefinition> = {
-  [K in RelationKeys<D>]?: D[K] extends RelationBuilder<infer Target, any, any>
-    ? readonly ProjectionArg<Target>[] | FilteredRelationSpec<Target>
-    : never
+// A projection arg is:
+//  - a scalar field name (string)
+//  - an object { relationName: RelationSpec }
+//  - an OQL expression
+export type ProjectionArg<S extends Schema, Name extends keyof S> =
+  | ScalarKeys<Unwrap<S[Name]>>
+  | RelationSpec<S, Name>
+  | OQLProjectionArg
+
+// Filter/order on sub-collections
+export interface FilteredRelationSpec<S extends Schema, Target extends keyof S> {
+  readonly fields: readonly ProjectionArg<S, Target>[]
+  readonly where?: FilterExprShape
+  readonly orderBy?: readonly OrderExprShape[]
 }
 
-// ── Infer the result type from projection args ──
+// Opaque shapes used only for type-level plumbing (operators define their own)
+export interface FilterExprShape {
+  readonly __filterExpr: true
+}
+export interface OrderExprShape {
+  readonly __orderExpr: true
+}
 
-// Extracts string elements (scalar keys) from a projection args tuple
-type ExtractScalarArgs<D extends EntityDefinition, Args extends readonly ProjectionArg<D>[]> = Extract<
+type RelationSpec<S extends Schema, Name extends keyof S> = {
+  readonly [K in RelationKeys<Unwrap<S[Name]>>]?:
+    Unwrap<S[Name]>[K] extends Relation<infer Target, any, any>
+      ? Target extends keyof S
+        ? readonly ProjectionArg<S, Target>[] | FilteredRelationSpec<S, Target>
+        : never
+      : never
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Infer projection result
+// ══════════════════════════════════════════════════════════════════════
+
+// Extract scalar string args from a projection args tuple
+type ExtractScalarArgs<S extends Schema, Name extends keyof S, Args extends readonly any[]> = Extract<
   Args[number],
-  ScalarKeys<D>
+  ScalarKeys<Unwrap<S[Name]>>
 >
 
-// Extracts object elements (relation specs) from a projection args tuple
-type ExtractRelationArgs<D extends EntityDefinition, Args extends readonly ProjectionArg<D>[]> = Extract<
-  Args[number],
-  Record<string, any>
->
+// Extract OQL expression args (they contribute their _projectionType)
+type ExtractExprArgs<Args extends readonly any[]> = Extract<Args[number], OQLProjectionArg>
 
-// Extract the projection args from either a plain array or a FilteredRelationSpec
-type ExtractRelationFields<V> =
+// Extract plain object args (relation specs without expression marker)
+type ExtractRelationObjs<Args extends readonly any[]> =
+  Exclude<Extract<Args[number], Record<string, any>>, OQLProjectionArg>
+
+// Extract fields array from either plain array or FilteredRelationSpec
+type ExtractRelFields<V> =
   V extends { readonly fields: readonly any[] } ? V['fields'] :
   V extends readonly any[] ? V :
   never
 
-// Resolves a single relation field's projected type
-type InferRelationType<
-  R,
-  Proj extends readonly any[],
-> = R extends RelationBuilder<infer Target, infer Kind, infer Nullable>
-  ? Kind extends 'oneToMany' | 'manyToMany'
-    ? InferProjection<Target, Proj>[]
-    : Nullable extends true
-      ? InferProjection<Target, Proj> | null
-      : InferProjection<Target, Proj>
-  : never
+// Resolve a relation's result type based on Kind and Nullable
+type ResolveRelation<S extends Schema, R, Proj extends readonly any[]> =
+  R extends Relation<infer Target, infer Kind, infer Nullable>
+    ? Target extends keyof S
+      ? Kind extends 'oneToMany' | 'manyToMany'
+        ? InferProjection<S, Target, Proj>[]
+        : Nullable extends true
+          ? InferProjection<S, Target, Proj> | null
+          : InferProjection<S, Target, Proj>
+      : never
+    : never
 
-// Resolves all relation specs from the projection into typed fields
-type InferRelationSpecs<D extends EntityDefinition, Specs> = UnionToIntersection<
-  Specs extends infer S extends Record<string, any>
+// For each relation key in the projection, resolve its result type
+type InferRelationFields<S extends Schema, Name extends keyof S, Specs> = UnionToIntersection<
+  Specs extends infer Obj extends Record<string, any>
     ? {
-        [K in keyof S & keyof D]: InferRelationType<D[K], ExtractRelationFields<S[K]>>
+        readonly [K in keyof Obj & keyof Unwrap<S[Name]>]: ResolveRelation<
+          S,
+          Unwrap<S[Name]>[K],
+          ExtractRelFields<Obj[K]>
+        >
       }
     : never
 >
 
-// Main projection inference: combines scalars + relations
-export type InferProjection<
-  D extends EntityDefinition,
-  Args extends readonly ProjectionArg<D>[],
-> = Prettify<
-  Pick<InferAllScalars<D>, ExtractScalarArgs<D, Args> & ScalarKeys<D>> &
-    InferRelationSpecs<D, ExtractRelationArgs<D, Args>>
+// Merge OQL expression projection shapes
+type InferExprFields<Exprs> = UnionToIntersection<
+  Exprs extends { readonly _projectionType?: infer P extends Record<string, unknown> } ? P : never
 >
 
-// When no projection is given, return all scalar fields
-export type InferDefaultProjection<D extends EntityDefinition> = InferAllScalars<D>
+// Main inference
+export type InferProjection<
+  S extends Schema,
+  Name extends keyof S,
+  Args extends readonly any[],
+> = Prettify<
+  Pick<InferAllScalars<Unwrap<S[Name]>>, ExtractScalarArgs<S, Name, Args> & ScalarKeys<Unwrap<S[Name]>>> &
+    InferRelationFields<S, Name, ExtractRelationObjs<Args>> &
+    InferExprFields<ExtractExprArgs<Args>>
+>
+
+// When no projection is given — all scalar fields
+export type InferDefaultProjection<S extends Schema, Name extends keyof S> =
+  InferAllScalars<Unwrap<S[Name]>>

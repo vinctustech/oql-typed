@@ -1,41 +1,39 @@
-import type { EntityDefinition, EntityInstance } from './schema.js'
-import type { InferAllScalars, InferProjection, ProjectionArg } from './types.js'
+import type {
+  Schema,
+  InferProjection,
+  InferDefaultProjection,
+  ProjectionArg,
+  OQLProjectionArg,
+} from './types.js'
 import { FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
+import { getTableName, type DB, type EntityHandle, type OQLInstance } from './db.js'
 
-// ── OQL interface — what we need from @vinctus/oql ──
+// ══════════════════════════════════════════════════════════════════════
+// Build projection string from variadic args (supports nested, filtered, aliased)
+// ══════════════════════════════════════════════════════════════════════
 
-export interface OQLInstance {
-  queryOne<T = any>(query: string, params?: Record<string, unknown>): Promise<T | undefined>
-  queryMany<T = any>(query: string, params?: Record<string, unknown>): Promise<T[]>
-  count(query: string, params?: Record<string, unknown>): Promise<number>
+function isFilteredSpec(
+  v: any,
+): v is { fields: readonly any[]; where?: FilterExpr; orderBy?: readonly OrderExpr[] } {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) && 'fields' in v
 }
 
-// ── Build the selection string from variadic args ──
-
-function isFilteredSpec(value: any): value is { fields: readonly any[]; where?: FilterExpr; orderBy?: readonly OrderExpr[] } {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) && 'fields' in value
-}
-
-function buildProjection<D extends EntityDefinition>(args: readonly ProjectionArg<D>[], ctx: FilterContext): string {
+function buildProjection(args: readonly any[], ctx: FilterContext): string {
   const parts: string[] = []
-
   for (const arg of args) {
     if (typeof arg === 'string') {
-      parts.push(arg as string)
+      parts.push(arg)
     } else if (typeof arg === 'object' && arg !== null && '__oqlExpr' in arg) {
-      // Raw/expression projection: raw('count: sum(seats)')
       parts.push((arg as any).toOQL(ctx))
     } else if (typeof arg === 'object' && arg !== null) {
       for (const [key, value] of Object.entries(arg as Record<string, any>)) {
         if (isFilteredSpec(value)) {
-          let projection = `${key} {${buildProjection(value.fields, ctx)}}`
-          if (value.where) {
-            projection += ` [${value.where.toOQL(ctx)}]`
-          }
+          let s = `${key} {${buildProjection(value.fields, ctx)}}`
+          if (value.where) s += ` [${value.where.toOQL(ctx)}]`
           if (value.orderBy && value.orderBy.length > 0) {
-            projection += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
+            s += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
           }
-          parts.push(projection)
+          parts.push(s)
         } else if (Array.isArray(value) && value.length > 0) {
           parts.push(`${key} {${buildProjection(value, ctx)}}`)
         } else {
@@ -44,28 +42,32 @@ function buildProjection<D extends EntityDefinition>(args: readonly ProjectionAr
       }
     }
   }
-
   return parts.join(' ')
 }
 
-// ── Query builder ──
+// ══════════════════════════════════════════════════════════════════════
+// QueryBuilder — chainable, infers Result type from projection args
+// ══════════════════════════════════════════════════════════════════════
 
-class QueryBuilder<D extends EntityDefinition, Result> {
+class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
   private readonly oql: OQLInstance
-  private readonly entityName: string
-  private readonly projectionArgs: readonly ProjectionArg<D>[] | undefined
+  private readonly schema: S
+  private readonly entityName: Name
+  private readonly projectionArgs: readonly any[] | undefined
   private filterExpr: FilterExpr | undefined
-  private orderExprs: OrderExpr[] = []
+  private readonly orderExprs: OrderExpr[] = []
   private limitVal: number | undefined
   private offsetVal: number | undefined
 
   constructor(
     oql: OQLInstance,
-    entity: EntityInstance<D>,
-    projectionArgs: readonly ProjectionArg<D>[] | undefined,
+    schema: S,
+    entityName: Name,
+    projectionArgs: readonly any[] | undefined,
   ) {
     this.oql = oql
-    this.entityName = entity.entityName
+    this.schema = schema
+    this.entityName = entityName
     this.projectionArgs = projectionArgs
   }
 
@@ -75,7 +77,7 @@ class QueryBuilder<D extends EntityDefinition, Result> {
   }
 
   orderBy(...orders: OrderExpr[]): this {
-    this.orderExprs = orders
+    this.orderExprs.push(...orders)
     return this
   }
 
@@ -91,27 +93,29 @@ class QueryBuilder<D extends EntityDefinition, Result> {
 
   private build(): { queryStr: string; params: Record<string, unknown> } {
     const ctx = new FilterContext()
-    let q = this.entityName
+    // OQL query uses the entity name (which is what OQL knows); tableName is only relevant for DDL
+    void getTableName
+    let q = String(this.entityName)
 
     if (this.projectionArgs) {
       q += ` {${buildProjection(this.projectionArgs, ctx)}}`
     }
-
     if (this.filterExpr) {
       q += ` [${this.filterExpr.toOQL(ctx)}]`
     }
-
     if (this.orderExprs.length > 0) {
       q += ` <${this.orderExprs.map((o) => o.toOQL()).join(', ')}>`
     }
-
     if (this.offsetVal !== undefined || this.limitVal !== undefined) {
       const limit = this.limitVal ?? ''
       const offset = this.offsetVal ?? ''
       q += ` |${limit}${offset !== '' ? `, ${offset}` : ''}|`
     }
-
     return { queryStr: q, params: ctx.getParams() }
+  }
+
+  toOQL(): { queryStr: string; params: Record<string, unknown> } {
+    return this.build()
   }
 
   async one(): Promise<Result | undefined> {
@@ -128,63 +132,82 @@ class QueryBuilder<D extends EntityDefinition, Result> {
     const { queryStr, params } = this.build()
     return this.oql.count(queryStr, params)
   }
-
-  toOQL(): { queryStr: string; params: Record<string, unknown> } {
-    return this.build()
-  }
 }
 
-// ── Public query function ──
+// ══════════════════════════════════════════════════════════════════════
+// QueryStarter — what `query(db, 'user')` or `db.user.query()` returns
+// ══════════════════════════════════════════════════════════════════════
 
-interface QueryStarter<D extends EntityDefinition> {
-  select<const Args extends readonly ProjectionArg<D>[]>(
+export interface QueryStarter<S extends Schema, Name extends keyof S> {
+  select<const Args extends readonly ProjectionArg<S, Name>[]>(
     ...args: Args
-  ): QueryBuilder<D, InferProjection<D, Args>>
+  ): QueryBuilder<S, Name, InferProjection<S, Name, Args>>
 
-  where(filter: FilterExpr): QueryBuilder<D, InferAllScalars<D>>
-  orderBy(...orders: OrderExpr[]): QueryBuilder<D, InferAllScalars<D>>
-  limit(n: number): QueryBuilder<D, InferAllScalars<D>>
-  offset(n: number): QueryBuilder<D, InferAllScalars<D>>
-  one(): Promise<InferAllScalars<D> | undefined>
-  many(): Promise<InferAllScalars<D>[]>
+  where(filter: FilterExpr): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  orderBy(...orders: OrderExpr[]): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  limit(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  offset(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  one(): Promise<InferDefaultProjection<S, Name> | undefined>
+  many(): Promise<InferDefaultProjection<S, Name>[]>
   count(): Promise<number>
+  toOQL(): { queryStr: string; params: Record<string, unknown> }
 }
 
-export function query<D extends EntityDefinition>(
+function createStarter<S extends Schema, Name extends keyof S>(
   oql: OQLInstance,
-  entity: EntityInstance<D>,
-): QueryStarter<D> {
+  schema: S,
+  entityName: Name,
+): QueryStarter<S, Name> {
+  type Default = InferDefaultProjection<S, Name>
+
   return {
-    select<const Args extends readonly ProjectionArg<D>[]>(...args: Args) {
-      return new QueryBuilder<D, InferProjection<D, Args>>(oql, entity, args)
+    select<const Args extends readonly ProjectionArg<S, Name>[]>(...args: Args) {
+      return new QueryBuilder<S, Name, InferProjection<S, Name, Args>>(oql, schema, entityName, args)
     },
-
-    where(filter: FilterExpr) {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).where(filter)
+    where(filter) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).where(filter)
     },
-
-    orderBy(...orders: OrderExpr[]) {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).orderBy(...orders)
+    orderBy(...orders) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).orderBy(...orders)
     },
-
-    limit(n: number) {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).limit(n)
+    limit(n) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).limit(n)
     },
-
-    offset(n: number) {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).offset(n)
+    offset(n) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).offset(n)
     },
-
-    async one() {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).one()
+    one() {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).one()
     },
-
-    async many() {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).many()
+    many() {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).many()
     },
-
-    async count() {
-      return new QueryBuilder<D, InferAllScalars<D>>(oql, entity, undefined).count()
+    count() {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).count()
+    },
+    toOQL() {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).toOQL()
     },
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Public entry points
+// ══════════════════════════════════════════════════════════════════════
+
+// query(db, 'user') — starts a query on the named entity
+export function query<S extends Schema, Name extends keyof S & string>(
+  db: DB<S>,
+  entityName: Name,
+): QueryStarter<S, Name>
+// query(entityHandle) — shortcut via db.user
+export function query<S extends Schema, Name extends keyof S>(
+  handle: EntityHandle<S, Name>,
+): QueryStarter<S, Name>
+export function query(a: any, b?: any): any {
+  if (b !== undefined) {
+    return createStarter(a.__oql as OQLInstance, a.__schema as Schema, b)
+  }
+  // EntityHandle — retrieve oql and schema from its parent through __schema
+  throw new Error('query(entityHandle) form requires db parameter; use query(db, "name") instead')
 }

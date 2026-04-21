@@ -1,86 +1,90 @@
-import type { EntityDefinition, EntityInstance, ColumnBuilder, RelationBuilder } from './schema.js'
-import type { InferAllScalars, ScalarKeys, RelationKeys } from './types.js'
+import type { Schema, InferAllScalars } from './types.js'
+import type { Column, Relation, Unwrap } from './schema.js'
+import type { DB, OQLInstance } from './db.js'
 
-// ── OQL mutation interface — what we need from @vinctus/oql ──
+// ══════════════════════════════════════════════════════════════════════
+// Input types — required non-PK scalars + manyToOne FKs
+// ══════════════════════════════════════════════════════════════════════
 
-export interface OQLMutationInstance {
-  entity(name: string): {
-    insert<T = any>(data: Record<string, unknown>): Promise<T>
-    update<T = any>(id: unknown, data: Record<string, unknown>): Promise<T>
-  }
-}
+type InsertableScalarKeys<D> = {
+  [K in keyof D]: D[K] extends Column<any, any, infer PK> ? (PK extends true ? never : K) : never
+}[keyof D]
 
-// ── Input types for insert/update ──
+type PKKeys<D> = {
+  [K in keyof D]: D[K] extends Column<any, any, infer PK> ? (PK extends true ? K : never) : never
+}[keyof D]
 
-// Scalar fields: all columns except primary keys
-type InsertableScalarKeys<D extends EntityDefinition> = {
-  [K in ScalarKeys<D>]: D[K] extends ColumnBuilder<any, any, infer PK>
-    ? PK extends true ? never : K
-    : never
-}[ScalarKeys<D>]
-
-// ManyToOne FK fields: accept the FK value (string/number) for linking
-type ManyToOneFKKeys<D extends EntityDefinition> = {
-  [K in RelationKeys<D>]: D[K] extends RelationBuilder<any, infer Kind, any>
+type ManyToOneKeys<D> = {
+  [K in keyof D]: D[K] extends Relation<any, infer Kind, any>
     ? Kind extends 'manyToOne' ? K : never
     : never
-}[RelationKeys<D>]
+}[keyof D]
 
-type RequiredManyToOneFKKeys<D extends EntityDefinition> = {
-  [K in ManyToOneFKKeys<D>]: D[K] extends RelationBuilder<any, any, infer N>
-    ? N extends true ? never : K
-    : never
-}[ManyToOneFKKeys<D>]
-
-type OptionalManyToOneFKKeys<D extends EntityDefinition> = {
-  [K in ManyToOneFKKeys<D>]: D[K] extends RelationBuilder<any, any, infer N>
-    ? N extends true ? K : never
-    : never
-}[ManyToOneFKKeys<D>]
-
-// Required vs optional scalar keys
-type RequiredScalarInsertKeys<D extends EntityDefinition> = {
-  [K in InsertableScalarKeys<D>]: D[K] extends ColumnBuilder<any, infer N, any>
+type RequiredScalarKeys<D> = {
+  [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any>
     ? N extends true ? never : K
     : never
 }[InsertableScalarKeys<D>]
 
-type OptionalScalarInsertKeys<D extends EntityDefinition> = {
-  [K in InsertableScalarKeys<D>]: D[K] extends ColumnBuilder<any, infer N, any>
+type OptionalScalarKeys<D> = {
+  [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any>
     ? N extends true ? K : never
     : never
 }[InsertableScalarKeys<D>]
 
-type InferColumnInput<C> = C extends ColumnBuilder<infer T, any, any> ? T : never
+type RequiredFKKeys<D> = {
+  [K in ManyToOneKeys<D>]: D[K] extends Relation<any, any, infer N>
+    ? N extends true ? never : K
+    : never
+}[ManyToOneKeys<D>]
 
-export type InsertInput<D extends EntityDefinition> =
-  { [K in RequiredScalarInsertKeys<D>]: InferColumnInput<D[K]> } &
-  { [K in OptionalScalarInsertKeys<D>]?: InferColumnInput<D[K]> | null } &
-  { [K in RequiredManyToOneFKKeys<D>]: string } &
-  { [K in OptionalManyToOneFKKeys<D>]?: string | null }
+type OptionalFKKeys<D> = {
+  [K in ManyToOneKeys<D>]: D[K] extends Relation<any, any, infer N>
+    ? N extends true ? K : never
+    : never
+}[ManyToOneKeys<D>]
 
-// Updatable: all non-PK scalar columns + manyToOne FKs, all optional
-export type UpdateInput<D extends EntityDefinition> = {
-  [K in InsertableScalarKeys<D>]?: InferColumnInput<D[K]> | null
+type ScalarValue<C> = C extends Column<infer T, any, any> ? T : never
+
+export type InsertInput<S extends Schema, Name extends keyof S> = {
+  [K in RequiredScalarKeys<Unwrap<S[Name]>>]: ScalarValue<Unwrap<S[Name]>[K]>
 } & {
-  [K in ManyToOneFKKeys<D>]?: string | null
+  [K in OptionalScalarKeys<Unwrap<S[Name]>>]?: ScalarValue<Unwrap<S[Name]>[K]> | null
+} & {
+  [K in RequiredFKKeys<Unwrap<S[Name]>>]: string
+} & {
+  [K in OptionalFKKeys<Unwrap<S[Name]>>]?: string | null
+} & {
+  // Primary key is optional — OQL auto-generates if omitted, caller can pass explicit
+  [K in PKKeys<Unwrap<S[Name]>>]?: ScalarValue<Unwrap<S[Name]>[K]>
 }
 
-// ── Typed mutation functions ──
-
-export function insert<D extends EntityDefinition>(
-  oql: OQLMutationInstance,
-  entity: EntityInstance<D>,
-  data: InsertInput<D>,
-): Promise<InferAllScalars<D>> {
-  return oql.entity(entity.entityName).insert<InferAllScalars<D>>(data as Record<string, unknown>)
+export type UpdateInput<S extends Schema, Name extends keyof S> = {
+  [K in InsertableScalarKeys<Unwrap<S[Name]>>]?: ScalarValue<Unwrap<S[Name]>[K]> | null
+} & {
+  [K in ManyToOneKeys<Unwrap<S[Name]>>]?: string | null
 }
 
-export function update<D extends EntityDefinition>(
-  oql: OQLMutationInstance,
-  entity: EntityInstance<D>,
+// ══════════════════════════════════════════════════════════════════════
+// insert() — returns the inserted row with all scalars
+// update() — returns the updated fields (partial)
+// ══════════════════════════════════════════════════════════════════════
+
+export function insert<S extends Schema, Name extends keyof S & string>(
+  db: DB<S>,
+  entityName: Name,
+  data: InsertInput<S, Name>,
+): Promise<InferAllScalars<Unwrap<S[Name]>>> {
+  const oql = db.__oql as OQLInstance
+  return oql.entity(entityName).insert<InferAllScalars<Unwrap<S[Name]>>>(data as Record<string, unknown>)
+}
+
+export function update<S extends Schema, Name extends keyof S & string>(
+  db: DB<S>,
+  entityName: Name,
   id: string | number,
-  data: UpdateInput<D>,
-): Promise<Partial<InferAllScalars<D>>> {
-  return oql.entity(entity.entityName).update(id, data as Record<string, unknown>)
+  data: UpdateInput<S, Name>,
+): Promise<Partial<InferAllScalars<Unwrap<S[Name]>>>> {
+  const oql = db.__oql as OQLInstance
+  return oql.entity(entityName).update(id, data as Record<string, unknown>)
 }
