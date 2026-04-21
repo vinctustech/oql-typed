@@ -347,11 +347,13 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
   }
   if (dm.enums.length > 0) lines.push('')
 
-  // Collect junction tables from manyToMany
+  // Collect junction tables from manyToMany — but only auto-generate ones
+  // that aren't already defined in the DM.
+  const explicitEntityNames = new Set(dm.entities.map((e) => e.name))
   const junctions = new Map<string, { from: string; to: string }>()
   for (const ent of dm.entities) {
     for (const f of ent.fields) {
-      if (f.type.kind === 'manyToMany' && !junctions.has(f.type.junction)) {
+      if (f.type.kind === 'manyToMany' && !junctions.has(f.type.junction) && !explicitEntityNames.has(f.type.junction)) {
         junctions.set(f.type.junction, { from: ent.name, to: f.type.target })
       }
     }
