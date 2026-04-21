@@ -106,10 +106,11 @@ export type ProjectionArg<S extends Schema, Name extends keyof S> =
   | RelationSpec<S, Name>
   | OQLProjectionArg
 
-// Filter/order on sub-collections
+// Filter/order on sub-collections. `where` accepts a full FilterExpr OR a bare
+// FieldRef<boolean> (short for `eq(field, true)`), matching the top-level .where().
 export interface FilteredRelationSpec<S extends Schema, Target extends keyof S> {
   readonly fields: readonly ProjectionArg<S, Target>[]
-  readonly where?: FilterExprShape
+  readonly where?: FilterExprShape | FieldRef<boolean>
   readonly orderBy?: readonly OrderExprShape[]
 }
 

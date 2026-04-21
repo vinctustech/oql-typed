@@ -5,7 +5,7 @@ import type { DB, OQLInstance } from './db.js'
 // Shared with query.ts but kept separate here to avoid circular imports.
 function isFilteredSpec(
   v: any,
-): v is { fields: readonly any[]; where?: FilterExpr; orderBy?: readonly OrderExpr[] } {
+): v is { fields: readonly any[]; where?: FilterArg; orderBy?: readonly OrderExpr[] } {
   return v !== null && typeof v === 'object' && !Array.isArray(v) && 'fields' in v
 }
 
@@ -20,7 +20,7 @@ function buildProjection(args: readonly any[], ctx: FilterContext): string {
       for (const [key, value] of Object.entries(arg as Record<string, any>)) {
         if (isFilteredSpec(value)) {
           let s = `${key} {${buildProjection(value.fields, ctx)}}`
-          if (value.where) s += ` [${value.where.toOQL(ctx)}]`
+          if (value.where) s += ` [${and(value.where).toOQL(ctx)}]`
           if (value.orderBy && value.orderBy.length > 0) {
             s += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
           }
