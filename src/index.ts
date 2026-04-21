@@ -93,6 +93,9 @@ export type { FilterExpr, FilterArg, OrderExpr, FilterField } from './operators.
 export { fn, raw, ref, subquery, alias } from './expressions.js'
 export type { OQLExpr } from './expressions.js'
 
+// Typed function wrappers
+export { lower, upper, trim, length, concat, coalesce, count } from './functions.js'
+
 // ══════════════════════════════════════════════════════════════════════
 // Mutations
 // ══════════════════════════════════════════════════════════════════════
