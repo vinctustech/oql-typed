@@ -450,7 +450,16 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
     lines.push(`export const ${ent.name} = entity(${tableArg}, {`)
 
     for (const field of ent.fields) {
-      lines.push(`  ${generateFieldTS(field, enumNames, enumValues)},`)
+      const fieldText = generateFieldTS(field, enumNames, enumValues)
+      // If the field output is already multi-line (e.g., long enum values), preserve its newlines
+      if (fieldText.includes('\n')) {
+        const partLines = fieldText.split('\n')
+        // First line gets "  " prefix; subsequent lines already have correct indent; last line needs trailing comma
+        const indented = [`  ${partLines[0]}`, ...partLines.slice(1, -1), `${partLines[partLines.length - 1]},`]
+        lines.push(...indented)
+      } else {
+        lines.push(`  ${fieldText},`)
+      }
     }
 
     lines.push('})')
@@ -459,6 +468,10 @@ export function generateSchemaTS(dm: ParsedDataModel): string {
 
   return lines.join('\n')
 }
+
+// Max line width before codegen breaks long expressions (e.g., enum value lists)
+// across multiple lines. Matches common linter/prettier defaults.
+const MAX_LINE_WIDTH = 100
 
 function generateFieldTS(field: ParsedField, enumNames: Set<string>, enumValues: Map<string, readonly string[]>): string {
   let expr: string
@@ -480,15 +493,13 @@ function generateFieldTS(field: ParsedField, enumNames: Set<string>, enumValues:
     }
     case 'enum': {
       const vals = enumValues.get(field.type.enumName) ?? []
-      const valsLit = vals.map((v) => `'${v}'`).join(', ')
-      expr = `enumType<${field.type.enumName}>('${field.type.enumName}', [${valsLit}])`
+      expr = enumTypeExpr(field.name, field.type.enumName, vals)
       break
     }
     case 'manyToOne': {
       if (enumNames.has(field.type.target)) {
         const vals = enumValues.get(field.type.target) ?? []
-        const valsLit = vals.map((v) => `'${v}'`).join(', ')
-        expr = `enumType<${field.type.target}>('${field.type.target}', [${valsLit}])`
+        expr = enumTypeExpr(field.name, field.type.target, vals)
       } else {
         const columnOpt = field.columnAlias ? `, { column: '${field.columnAlias}' }` : ''
         expr = `manyToOne(() => ${field.type.target}${columnOpt})`
@@ -523,6 +534,20 @@ function generateFieldTS(field: ParsedField, enumNames: Set<string>, enumValues:
   }
 
   return `${field.name}: ${expr}`
+}
+
+// Generate an enumType() call, breaking the values array to multiple lines
+// if the inline version would exceed MAX_LINE_WIDTH. Output is assembled with
+// 2-space indentation for values, matching the enclosing entity definition.
+function enumTypeExpr(fieldName: string, enumName: string, vals: readonly string[]): string {
+  const valsLit = vals.map((v) => `'${v}'`).join(', ')
+  const inline = `enumType<${enumName}>('${enumName}', [${valsLit}])`
+  // Estimate the full line: "  ${fieldName}: ${inline}," — plus room for possible .nullable()
+  const fullLen = 2 + fieldName.length + 2 + inline.length + 1 + '.nullable()'.length
+  if (fullLen <= MAX_LINE_WIDTH) return inline
+
+  const indentedVals = vals.map((v) => `    '${v}',`).join('\n')
+  return `enumType<${enumName}>('${enumName}', [\n${indentedVals}\n  ])`
 }
 
 export function parseDMAndGenerate(dmString: string): string {

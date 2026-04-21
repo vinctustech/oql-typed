@@ -84,6 +84,35 @@ describe('codegen: imports', () => {
     assert.ok(!ts.includes('bigint_()'), `Should not emit bigint_(): ${ts}`)
   })
 
+  it('keeps short enum values inline', () => {
+    const ts = generateSchemaTS(parseDM(`
+      enum R { A B }
+      entity foo { *id: uuid\n role: R! }
+    `))
+    assert.ok(ts.includes("role: enumType<R>('R', ['A', 'B'])"), `Expected inline enum in: ${ts}`)
+  })
+
+  it('breaks long enum values across multiple lines', () => {
+    const ts = generateSchemaTS(parseDM(`
+      enum TripOptimizationHeuristic { MINIMIZE_DISTANCE MINIMIZE_DURATION }
+      entity store {
+        *id: uuid
+        tripOptimizationHeuristic (trip_optimization_heuristic): TripOptimizationHeuristic!
+      }
+    `))
+    // The full line with an inline array exceeds 100 chars — should be multi-line
+    assert.ok(
+      ts.includes("enumType<TripOptimizationHeuristic>('TripOptimizationHeuristic', [\n    'MINIMIZE_DISTANCE',"),
+      `Expected multi-line enum values in: ${ts}`,
+    )
+    // Closing ]) should be indented 2 spaces (matching the enclosing field)
+    assert.ok(ts.includes("  ]),"), `Expected indented closing in: ${ts}`)
+    // No line should exceed 120 chars
+    for (const line of ts.split('\n')) {
+      assert.ok(line.length <= 120, `Line too long (${line.length} chars): ${line}`)
+    }
+  })
+
   it('handles oneToMany with reverse reference: [target].field', () => {
     const ts = generateSchemaTS(parseDM(`
       entity place {
