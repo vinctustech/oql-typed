@@ -184,7 +184,9 @@ export function notInList(field: any, values: any[]): FilterExpr {
   }
 }
 
-export function like(field: FieldRef<string>, pattern: string): FilterExpr {
+// LIKE/ILIKE accept nullable string fields too — in SQL, `NULL LIKE 'x'` is NULL
+// (treated as false by the filter), not an error.
+export function like(field: FieldRef<string> | FieldRef<string | null>, pattern: string): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -193,7 +195,7 @@ export function like(field: FieldRef<string>, pattern: string): FilterExpr {
   }
 }
 
-export function ilike(field: FieldRef<string>, pattern: string): FilterExpr {
+export function ilike(field: FieldRef<string> | FieldRef<string | null>, pattern: string): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
