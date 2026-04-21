@@ -1,9 +1,14 @@
 import type { EntityDefinition, EntityInstance, FieldRef, RelationFieldRef } from './schema.js'
 import { RelationBuilder } from './schema.js'
 
+// A filter operand: either a scalar field ref or a manyToOne relation ref.
+// manyToOne relations are auto-resolved to their dotted FK path at runtime
+// (e.g., eq(trip.store, storeId) → "store.id = :storeId").
+export type FilterField<T = unknown> = FieldRef<T> | RelationFieldRef<any, 'manyToOne'>
+
 // ── Resolve field to OQL string — handles plain fields, FK relations, and expressions ──
 
-function resolveField(field: FieldRef<any>, ctx: FilterContext): string {
+function resolveField(field: FilterField<any>, ctx: FilterContext): string {
   // OQL expression (fn(), raw()) — use toOQL
   if ('__oqlExpr' in field && typeof (field as any).toOQL === 'function') {
     return (field as any).toOQL(ctx)
@@ -46,7 +51,7 @@ export interface FilterExpr {
 
 // ── Comparison operators ──
 
-function comparisonOp<T>(field: FieldRef<T>, op: string, value: T): FilterExpr {
+function comparisonOp<T>(field: FilterField<T>, op: string, value: T): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -55,27 +60,27 @@ function comparisonOp<T>(field: FieldRef<T>, op: string, value: T): FilterExpr {
   }
 }
 
-export function eq<T>(field: FieldRef<T>, value: T): FilterExpr {
+export function eq<T>(field: FilterField<T>, value: T): FilterExpr {
   return comparisonOp(field, '=', value)
 }
 
-export function ne<T>(field: FieldRef<T>, value: T): FilterExpr {
+export function ne<T>(field: FilterField<T>, value: T): FilterExpr {
   return comparisonOp(field, '!=', value)
 }
 
-export function gt<T>(field: FieldRef<T>, value: T): FilterExpr {
+export function gt<T>(field: FilterField<T>, value: T): FilterExpr {
   return comparisonOp(field, '>', value)
 }
 
-export function gte<T>(field: FieldRef<T>, value: T): FilterExpr {
+export function gte<T>(field: FilterField<T>, value: T): FilterExpr {
   return comparisonOp(field, '>=', value)
 }
 
-export function lt<T>(field: FieldRef<T>, value: T): FilterExpr {
+export function lt<T>(field: FilterField<T>, value: T): FilterExpr {
   return comparisonOp(field, '<', value)
 }
 
-export function lte<T>(field: FieldRef<T>, value: T): FilterExpr {
+export function lte<T>(field: FilterField<T>, value: T): FilterExpr {
   return comparisonOp(field, '<=', value)
 }
 
@@ -111,7 +116,7 @@ export function not(expr: FilterExpr): FilterExpr {
 
 // ── List operators ──
 
-export function inList<T>(field: FieldRef<T>, values: T[]): FilterExpr {
+export function inList<T>(field: FilterField<T>, values: T[]): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -120,7 +125,7 @@ export function inList<T>(field: FieldRef<T>, values: T[]): FilterExpr {
   }
 }
 
-export function notInList<T>(field: FieldRef<T>, values: T[]): FilterExpr {
+export function notInList<T>(field: FilterField<T>, values: T[]): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -131,7 +136,7 @@ export function notInList<T>(field: FieldRef<T>, values: T[]): FilterExpr {
 
 // ── String operators ──
 
-export function like(field: FieldRef<string>, pattern: string): FilterExpr {
+export function like(field: FilterField<string>, pattern: string): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -140,7 +145,7 @@ export function like(field: FieldRef<string>, pattern: string): FilterExpr {
   }
 }
 
-export function ilike(field: FieldRef<string>, pattern: string): FilterExpr {
+export function ilike(field: FilterField<string>, pattern: string): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -151,7 +156,7 @@ export function ilike(field: FieldRef<string>, pattern: string): FilterExpr {
 
 // ── Range operators ──
 
-export function between<T>(field: FieldRef<T>, low: T, high: T): FilterExpr {
+export function between<T>(field: FilterField<T>, low: T, high: T): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -162,7 +167,7 @@ export function between<T>(field: FieldRef<T>, low: T, high: T): FilterExpr {
 
 // ── Null checks ──
 
-export function isNull(field: FieldRef<unknown>): FilterExpr {
+export function isNull(field: FilterField<unknown>): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
@@ -171,7 +176,7 @@ export function isNull(field: FieldRef<unknown>): FilterExpr {
   }
 }
 
-export function isNotNull(field: FieldRef<unknown>): FilterExpr {
+export function isNotNull(field: FilterField<unknown>): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
