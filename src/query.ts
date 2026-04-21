@@ -36,6 +36,8 @@ function buildProjection(args: readonly any[], ctx: FilterContext): string {
           parts.push(s)
         } else if (Array.isArray(value) && value.length > 0) {
           parts.push(`${key} {${buildProjection(value, ctx)}}`)
+        } else if (typeof value === 'string') {
+          parts.push(`${key} {${value}}`)
         } else {
           parts.push(key)
         }

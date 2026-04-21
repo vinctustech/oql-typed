@@ -179,6 +179,12 @@ describe('runtime: projections', () => {
     assert.equal(r.account.name, 'Acme Corp')
   })
 
+  it('single-field shorthand: { account: "name" } equivalent to { account: ["name"] }', async () => {
+    const r = await query(db, 'user').select('id', { account: 'name' }).where(eq(db.user.id, ID.u1)).one()
+    assert.ok(r)
+    assert.equal(r.account.name, 'Acme Corp')
+  })
+
   it('nested oneToMany', async () => {
     const r = await query(db, 'store').select('id', 'name', { trips: ['id', 'state'] }).where(eq(db.store.id, ID.s1)).one()
     assert.ok(r)

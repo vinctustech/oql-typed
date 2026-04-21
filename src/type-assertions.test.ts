@@ -130,6 +130,36 @@ describe('type: projection inference', () => {
     >
   }
 
+  // --- Single-field shorthand: { account: 'name' } ≡ { account: ['name'] } ---
+  async function _m2oShorthand() {
+    const r = await query(db, 'user')
+      .select('id', { account: 'name' })
+      .one()
+    type _ = AssertTrue<
+      AssertEqual<typeof r, { id: string; account: { name: string } } | undefined>
+    >
+  }
+
+  // --- Single-field shorthand on nullable manyToOne preserves null ---
+  async function _m2oShorthandNullable() {
+    const r = await query(db, 'trip')
+      .select('id', { vehicle: 'make' })
+      .one()
+    type _ = AssertTrue<
+      AssertEqual<typeof r, { id: string; vehicle: { make: string } | null } | undefined>
+    >
+  }
+
+  // --- Single-field shorthand on oneToMany returns array ---
+  async function _o2mShorthand() {
+    const r = await query(db, 'store')
+      .select('id', { trips: 'id' })
+      .one()
+    type _ = AssertTrue<
+      AssertEqual<typeof r, { id: string; trips: { id: string }[] } | undefined>
+    >
+  }
+
   // --- Nested manyToOne: nullable relation ---
   async function _m2oNull() {
     const r = await query(db, 'trip')

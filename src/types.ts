@@ -126,7 +126,10 @@ type RelationSpec<S extends Schema, Name extends keyof S> = {
   readonly [K in RelationKeys<Unwrap<S[Name]>>]?:
     Unwrap<S[Name]>[K] extends Relation<infer Target, any, any>
       ? Target extends keyof S
-        ? readonly ProjectionArg<S, Target>[] | FilteredRelationSpec<S, Target>
+        ?
+            | ScalarKeys<Unwrap<S[Target]>>
+            | readonly ProjectionArg<S, Target>[]
+            | FilteredRelationSpec<S, Target>
         : never
       : never
 }
@@ -148,10 +151,11 @@ type ExtractExprArgs<Args extends readonly any[]> = Extract<Args[number], OQLPro
 type ExtractRelationObjs<Args extends readonly any[]> =
   Exclude<Extract<Args[number], Record<string, any>>, OQLProjectionArg>
 
-// Extract fields array from either plain array or FilteredRelationSpec
+// Extract fields array from either plain array, FilteredRelationSpec, or single-string shorthand
 type ExtractRelFields<V> =
   V extends { readonly fields: readonly any[] } ? V['fields'] :
   V extends readonly any[] ? V :
+  V extends string ? readonly [V] :
   never
 
 // Resolve a relation's result type based on Kind and Nullable
