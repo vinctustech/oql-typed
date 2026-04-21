@@ -1,6 +1,7 @@
 import type { Schema, FieldRefsFor } from './types.js'
 import type { Unwrap, EntityMeta } from './schema.js'
 import { Column, Relation } from './schema.js'
+import type { QueryStarter } from './query.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // OQL runtime interface — minimal shape we need from the backend
@@ -20,10 +21,15 @@ export interface OQLInstance {
 // DB type — db.user, db.account, etc.
 // ══════════════════════════════════════════════════════════════════════
 
+// EntityHandle is BOTH a field-ref accessor AND a query starter.
+// `db.user.id`     → FieldRef<string>                (field-ref accessor)
+// `db.user.select(...)` → QueryBuilder<...>          (query starter)
+// Column/relation names can't conflict with starter method names (select, where,
+// orderBy, limit, offset, one, many, count, toOQL, query, queryBuilder).
 export type EntityHandle<S extends Schema, Name extends keyof S> = {
   readonly __entityName: Name
   readonly __schema: S
-} & FieldRefsFor<S, Name>
+} & FieldRefsFor<S, Name> & QueryStarter<S, Name>
 
 export type DB<S extends Schema> = {
   readonly __oql: OQLInstance
@@ -96,7 +102,7 @@ function createRelationRef(
   return base
 }
 
-function createEntityHandle(schema: Schema, entityName: string): any {
+function createEntityHandle(oql: OQLInstance, schema: Schema, entityName: string): any {
   const def = getEntityDef(schema, entityName)
   const handle: Record<string, any> = {
     __entityName: entityName,
@@ -109,7 +115,26 @@ function createEntityHandle(schema: Schema, entityName: string): any {
       handle[fieldName] = createRelationRef(schema, entityName, fieldName, builder)
     }
   }
+  // Mix in query-starter methods so `db.user.select(...).where(...)` works.
+  // Starter factory is injected via registerStarterFactory() to avoid a hard
+  // circular import between db.ts and query.ts.
+  const starter = starterFactory(oql, schema, entityName)
+  for (const key of Object.keys(starter)) {
+    if (!(key in handle)) handle[key] = starter[key]
+  }
   return handle
+}
+
+// Injected by query.ts on module load to avoid circular import.
+type StarterFactory = (oql: OQLInstance, schema: Schema, entityName: string) => Record<string, any>
+let starterFactory: StarterFactory = () => {
+  throw new Error(
+    'oql-typed: starter factory not registered. Import from the package root (@vinctus/oql-typed) to ensure all modules load.',
+  )
+}
+
+export function registerStarterFactory(fn: StarterFactory): void {
+  starterFactory = fn
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -122,7 +147,7 @@ export function typedOQL<S extends Schema>(oql: OQLInstance, schema: S): DB<S> {
     __schema: schema,
   }
   for (const entityName of Object.keys(schema)) {
-    db[entityName] = createEntityHandle(schema, entityName)
+    db[entityName] = createEntityHandle(oql, schema, entityName)
   }
   return db as DB<S>
 }

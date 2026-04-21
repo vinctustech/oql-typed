@@ -6,7 +6,7 @@ import type {
   OQLProjectionArg,
 } from './types.js'
 import { FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
-import { getTableName, type DB, type EntityHandle, type OQLInstance } from './db.js'
+import { getTableName, registerStarterFactory, type DB, type EntityHandle, type OQLInstance } from './db.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Build projection string from variadic args (supports nested, filtered, aliased)
@@ -211,3 +211,10 @@ export function query(a: any, b?: any): any {
   // EntityHandle — retrieve oql and schema from its parent through __schema
   throw new Error('query(entityHandle) form requires db parameter; use query(db, "name") instead')
 }
+
+// Register the starter factory with db.ts so entity handles (db.user, db.zone, ...)
+// can include starter methods (select/where/orderBy/one/many/count/toOQL) directly.
+// This runs at module load and breaks the circular value-import between db and query.
+registerStarterFactory((oql, schema, entityName) =>
+  createStarter(oql, schema, entityName as keyof Schema) as unknown as Record<string, any>,
+)

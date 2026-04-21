@@ -121,12 +121,12 @@ function schemaToDM(s: typeof schema): string {
 // ═══════════════════════════════════════════════════════════════════
 
 let oql: OQL_PETRADB
-const db = typedOQL(undefined as any, schema) // oql assigned in before()
+let db: ReturnType<typeof typedOQL<typeof schema>>
 
 before(async () => {
   const dm = schemaToDM(schema)
   oql = new OQL_PETRADB(dm)
-  ;(db as any).__oql = oql
+  db = typedOQL(oql, schema)
   await oql.rawMulti(seedSQL + dataSQL)
 })
 
@@ -140,6 +140,18 @@ describe('runtime: basic queries', () => {
     assert.equal(r.length, 1)
     assert.equal(r[0].name, 'Acme Corp')
     assert.equal(r[0].enabled, true)
+  })
+
+  it('shorthand: db.account.many() equivalent to query(db, "account").many()', async () => {
+    const r = await db.account.many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].name, 'Acme Corp')
+  })
+
+  it('shorthand: db.user.select(...).where(...).one()', async () => {
+    const r = await db.user.select('id', 'firstName').where(eq(db.user.id, ID.u1)).one()
+    assert.ok(r)
+    assert.equal(r.firstName, 'Alice')
   })
 
   it('queryOne returns typed single row', async () => {
