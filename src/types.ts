@@ -108,8 +108,11 @@ export type ProjectionArg<S extends Schema, Name extends keyof S> =
 
 // Filter/order on sub-collections. `where` accepts a full FilterExpr OR a bare
 // FieldRef<boolean> (short for `eq(field, true)`), matching the top-level .where().
+// `fields` accepts a single scalar name as shorthand for a one-element array
+// (e.g. `fields: 'id'` ≡ `fields: ['id']`), matching the existing `{ relation: 'name' }`
+// shorthand for bare relation specs.
 export interface FilteredRelationSpec<S extends Schema, Target extends keyof S> {
-  readonly fields: readonly ProjectionArg<S, Target>[]
+  readonly fields: ProjectionArg<S, Target> | readonly ProjectionArg<S, Target>[]
   readonly where?: FilterExprShape | FieldRef<boolean>
   readonly orderBy?: readonly OrderExprShape[]
 }
@@ -151,12 +154,18 @@ type ExtractExprArgs<Args extends readonly any[]> = Extract<Args[number], OQLPro
 type ExtractRelationObjs<Args extends readonly any[]> =
   Exclude<Extract<Args[number], Record<string, any>>, OQLProjectionArg>
 
-// Extract fields array from either plain array, FilteredRelationSpec, or single-string shorthand
+// Extract fields array from either plain array, FilteredRelationSpec, or single-string shorthand.
+// FilteredRelationSpec.fields may itself be a single string (shorthand for [string]).
 type ExtractRelFields<V> =
-  V extends { readonly fields: readonly any[] } ? V['fields'] :
-  V extends readonly any[] ? V :
-  V extends string ? readonly [V] :
-  never
+  V extends { readonly fields: infer F }
+    ? F extends readonly any[]
+      ? F
+      : F extends string
+        ? readonly [F]
+        : never
+    : V extends readonly any[] ? V :
+      V extends string ? readonly [V] :
+      never
 
 // Resolve a relation's result type based on Kind and Nullable
 type ResolveRelation<S extends Schema, R, Proj extends readonly any[]> =

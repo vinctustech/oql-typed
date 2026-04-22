@@ -230,6 +230,33 @@ describe('runtime: projections', () => {
     assert.equal(r.trips[0].state, 'REQUESTED')
   })
 
+  it('filtered sub-collection: fields shorthand (single string)', async () => {
+    const r = await query(db, 'store')
+      .select('id', {
+        trips: {
+          fields: 'id',
+          where: ne(db.trip.state, 'CANCELLED'),
+        },
+      })
+      .where(eq(db.store.id, ID.s1))
+      .one()
+    assert.ok(r)
+    assert.ok(Array.isArray(r.trips))
+    assert.ok(r.trips.length > 0)
+    // Only `id` projected — no `state` property on the items
+    assert.equal(typeof r.trips[0].id, 'string')
+  })
+
+  it('filtered sub-collection: fields shorthand generates same OQL as array form', () => {
+    const arrayForm = query(db, 'store')
+      .select('id', { trips: { fields: ['id'], where: ne(db.trip.state, 'CANCELLED') } })
+      .toOQL()
+    const stringForm = query(db, 'store')
+      .select('id', { trips: { fields: 'id', where: ne(db.trip.state, 'CANCELLED') } })
+      .toOQL()
+    assert.equal(arrayForm.queryStr, stringForm.queryStr)
+  })
+
   it('aliased projection: returnTripId: (returnTripFor.id)', async () => {
     const r = await query(db, 'trip')
       .select('id', alias<{ returnTripId: string | null }>('returnTripId', db.trip.returnTripFor.id))

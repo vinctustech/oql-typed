@@ -237,6 +237,21 @@ describe('type: projection inference', () => {
     >
   }
 
+  // --- Filtered sub-collection: fields shorthand (single string) ---
+  async function _filteredShorthand() {
+    const r = await query(db, 'store')
+      .select('id', {
+        trips: {
+          fields: 'id',
+          where: ne(db.trip.state, 'CANCELLED'),
+        },
+      })
+      .one()
+    type _ = AssertTrue<
+      AssertEqual<typeof r, { id: string; trips: { id: string }[] } | undefined>
+    >
+  }
+
   // --- Aliased projection: contributes typed key to result ---
   async function _alias() {
     const r = await query(db, 'trip')
