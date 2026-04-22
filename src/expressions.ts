@@ -1,5 +1,5 @@
 import type { FieldRef, OQLProjectionArg } from './types.js'
-import type { FilterContext, FilterExpr } from './operators.js'
+import { and, type FilterArg, type FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // OQLExpr — can appear in both filter and projection positions
@@ -125,6 +125,73 @@ export function alias<Shape extends Record<string, unknown>>(
         return `${label}: (${inner.toOQL(ctx)})`
       }
       return `${label}: (${(inner as FieldRef).fieldName})`
+    },
+  } as any
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// aliasedRelation(alias, relation, spec) — alias a sub-collection projection:
+//   passengers: trips {count: sum(seats)} [state != 'COMPLETED']
+//
+// Shape is user-specified and contributes to the inferred projection result.
+// Fields may be scalar names, OQL expressions (e.g. raw('count: sum(seats)'))
+// or nested relation objects accepted by the ordinary projection syntax.
+// ══════════════════════════════════════════════════════════════════════
+
+export interface AliasedRelationSpec {
+  readonly fields: readonly (string | OQLExpr<any> | Record<string, any>)[]
+  readonly where?: FilterArg
+  readonly orderBy?: readonly OrderExpr[]
+}
+
+export function aliasedRelation<Shape extends Record<string, unknown>>(
+  alias: string,
+  relation: string,
+  spec: AliasedRelationSpec,
+): OQLExpr<Shape> & OQLProjectionArg & { _projectionType: Shape } {
+  return {
+    __oqlExpr: true,
+    _type: undefined as any,
+    _projectionType: undefined as any,
+    toOQL(ctx: FilterContext): string {
+      const fieldsStr = spec.fields
+        .map((f) => {
+          if (typeof f === 'string') return f
+          if (f && typeof f === 'object' && '__oqlExpr' in f) {
+            return (f as OQLExpr).toOQL(ctx)
+          }
+          if (f && typeof f === 'object') {
+            // Nested relation object: { rel: [...] } or { rel: { fields, where } }
+            const parts: string[] = []
+            for (const [key, value] of Object.entries(f as Record<string, any>)) {
+              if (value && typeof value === 'object' && 'fields' in value) {
+                let s = `${key} {${(value.fields as any[]).map((x: any) =>
+                  typeof x === 'string' ? x : x.toOQL ? x.toOQL(ctx) : String(x),
+                ).join(' ')}}`
+                if (value.where) s += ` [${and(value.where).toOQL(ctx)}]`
+                if (value.orderBy && value.orderBy.length > 0) {
+                  s += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
+                }
+                parts.push(s)
+              } else if (Array.isArray(value) && value.length > 0) {
+                parts.push(`${key} {${value.join(' ')}}`)
+              } else if (typeof value === 'string') {
+                parts.push(`${key} {${value}}`)
+              } else {
+                parts.push(key)
+              }
+            }
+            return parts.join(' ')
+          }
+          return String(f)
+        })
+        .join(' ')
+      let s = `${alias}: ${relation} {${fieldsStr}}`
+      if (spec.where) s += ` [${and(spec.where).toOQL(ctx)}]`
+      if (spec.orderBy && spec.orderBy.length > 0) {
+        s += ` <${spec.orderBy.map((o) => o.toOQL()).join(', ')}>`
+      }
+      return s
     },
   } as any
 }

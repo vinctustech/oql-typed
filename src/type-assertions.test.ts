@@ -17,7 +17,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { alias, fn, raw, ref, subquery } from './expressions.js'
+import { alias, aliasedRelation, fn, raw, ref, subquery } from './expressions.js'
 import type { FieldRef, Prettify } from './types.js'
 
 import { schema, ID, type Role, type TripState } from './test-schema.js'
@@ -244,6 +244,26 @@ describe('type: projection inference', () => {
       .one()
     type _ = AssertTrue<
       AssertEqual<typeof r, { id: string; returnTripId: string | null } | undefined>
+    >
+  }
+
+  // --- Aliased relation: contributes typed collection key to result ---
+  async function _aliasedRelation() {
+    const r = await query(db, 'vehicle')
+      .select(
+        'id',
+        'make',
+        aliasedRelation<{ passengers: { count: number }[] }>('passengers', 'trips', {
+          fields: [raw('count: sum(seats)')],
+          where: ne(db.trip.state, 'COMPLETED'),
+        }),
+      )
+      .one()
+    type _ = AssertTrue<
+      AssertEqual<
+        typeof r,
+        { id: string; make: string; passengers: { count: number }[] } | undefined
+      >
     >
   }
 })

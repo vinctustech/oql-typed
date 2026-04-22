@@ -90,8 +90,8 @@ export type { FilterExpr, FilterArg, OrderExpr, FilterField } from './operators.
 // ══════════════════════════════════════════════════════════════════════
 // Expressions
 // ══════════════════════════════════════════════════════════════════════
-export { fn, raw, ref, subquery, alias } from './expressions.js'
-export type { OQLExpr } from './expressions.js'
+export { fn, raw, ref, subquery, alias, aliasedRelation } from './expressions.js'
+export type { OQLExpr, AliasedRelationSpec } from './expressions.js'
 
 // Typed function wrappers
 export { lower, upper, trim, length, concat, coalesce, count } from './functions.js'

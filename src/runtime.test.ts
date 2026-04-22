@@ -14,7 +14,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { fn, raw, ref, alias } from './expressions.js'
+import { fn, raw, ref, alias, aliasedRelation } from './expressions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
 
@@ -255,6 +255,77 @@ describe('runtime: projections', () => {
     assert.ok(Array.isArray(trips))
     // v1's t1 (CONFIRMED, 2 seats); t3 is COMPLETED so excluded
     assert.equal(trips[0].count, 2)
+  })
+
+  it('aliasedRelation: passengers: trips {count: sum(seats)} [filter]', async () => {
+    const r = await query(db, 'vehicle')
+      .select(
+        'id',
+        'make',
+        aliasedRelation<{ passengers: { count: number }[] }>('passengers', 'trips', {
+          fields: [raw('count: sum(seats)')],
+          where: and(ne(db.trip.state, 'COMPLETED'), ne(db.trip.state, 'CANCELLED')),
+        }),
+      )
+      .where(eq(db.vehicle.id, ID.v1))
+      .one()
+    assert.ok(r)
+    // Shape-typed access: no cast needed
+    assert.ok(Array.isArray(r.passengers))
+    assert.equal(r.passengers[0].count, 2)
+  })
+
+  it('aliasedRelation: OQL string uses alias-colon-relation form', () => {
+    const { queryStr } = query(db, 'vehicle')
+      .select(
+        'id',
+        aliasedRelation<{ passengers: { count: number }[] }>('passengers', 'trips', {
+          fields: [raw('count: sum(seats)')],
+          where: ne(db.trip.state, 'COMPLETED'),
+        }),
+      )
+      .where(eq(db.vehicle.id, ID.v1))
+      .toOQL()
+    assert.ok(queryStr.includes('passengers: trips {count: sum(seats)}'))
+    assert.ok(queryStr.includes('[state != :p0]'))
+  })
+
+  it('aliasedRelation: scalar fields and orderBy', async () => {
+    const r = await query(db, 'vehicle')
+      .select(
+        'id',
+        aliasedRelation<{ activeTrips: { id: string; state: string }[] }>(
+          'activeTrips',
+          'trips',
+          {
+            fields: ['id', 'state'],
+            where: ne(db.trip.state, 'COMPLETED'),
+            orderBy: [desc(db.trip.createdAt)],
+          },
+        ),
+      )
+      .where(eq(db.vehicle.id, ID.v1))
+      .one()
+    assert.ok(r)
+    assert.ok(Array.isArray(r.activeTrips))
+    // v1's non-COMPLETED trip: just t1 (t3 is COMPLETED)
+    assert.equal(r.activeTrips.length, 1)
+    assert.equal(r.activeTrips[0].state, 'CONFIRMED')
+  })
+
+  it('aliasedRelation: no filter, no orderBy', () => {
+    const { queryStr } = query(db, 'vehicle')
+      .select(
+        'id',
+        aliasedRelation<{ allTrips: { id: string }[] }>('allTrips', 'trips', {
+          fields: ['id'],
+        }),
+      )
+      .where(eq(db.vehicle.id, ID.v1))
+      .toOQL()
+    assert.ok(queryStr.includes('allTrips: trips {id}'))
+    // No filter brackets on the aliased relation
+    assert.ok(!queryStr.includes('allTrips: trips {id} ['))
   })
 })
 
