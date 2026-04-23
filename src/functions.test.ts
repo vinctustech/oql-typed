@@ -5,7 +5,20 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { typedOQL, lower, upper, trim, length, concat, coalesce, count } from './index.js'
+import {
+  typedOQL,
+  lower,
+  upper,
+  trim,
+  length,
+  concat,
+  coalesce,
+  count,
+  sum,
+  avg,
+  min,
+  max,
+} from './index.js'
 
 import { schema } from './test-schema.js'
 
@@ -66,9 +79,34 @@ describe('typed function wrappers', () => {
     type __ = AssertTrue<AssertEqual<(typeof e2)['_type'], number>>
   }
 
+  // sum/avg — always nullable (empty set → NULL)
+  async function _sumAvg() {
+    const s1 = sum(db.vehicle.seats) // seats: integer (non-null)
+    type _S1 = AssertTrue<AssertEqual<(typeof s1)['_type'], number | null>>
+    const s2 = sum(db.vehicle.year) // year: integer nullable
+    type _S2 = AssertTrue<AssertEqual<(typeof s2)['_type'], number | null>>
+
+    const a1 = avg(db.vehicle.seats)
+    type _A1 = AssertTrue<AssertEqual<(typeof a1)['_type'], number | null>>
+  }
+
+  // min/max preserve element type, always nullable
+  async function _minMax() {
+    const m1 = min(db.vehicle.seats) // number → number | null
+    type _M1 = AssertTrue<AssertEqual<(typeof m1)['_type'], number | null>>
+    const m2 = max(db.trip.createdAt) // Date → Date | null
+    type _M2 = AssertTrue<AssertEqual<(typeof m2)['_type'], Date | null>>
+    const m3 = min(db.user.lastLoginAt) // Date | null → Date | null
+    type _M3 = AssertTrue<AssertEqual<(typeof m3)['_type'], Date | null>>
+  }
+
   // Negatives: can't pass number field to string function
   // @ts-expect-error — lower on a Date field
-  lower(db.user.createdAt)
+  lower(db.trip.createdAt)
   // @ts-expect-error — length on a Date field
-  length(db.user.createdAt)
+  length(db.trip.createdAt)
+  // @ts-expect-error — sum on a string field
+  sum(db.user.email)
+  // @ts-expect-error — avg on a string field
+  avg(db.user.email)
 })

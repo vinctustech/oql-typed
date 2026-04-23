@@ -15,6 +15,7 @@ import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
 import { fn, raw, ref, alias, aliasedRelation } from './expressions.js'
+import { sum, avg, min, max } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
 
@@ -440,6 +441,53 @@ describe('runtime: ordering + pagination', () => {
     assert.equal(r.length, 2)
     assert.equal(r[0].firstName, 'Bob')
     assert.equal(r[1].firstName, 'Charlie')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// TYPED AGGREGATES
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: typed aggregates', () => {
+  it('sum(seats) inside aliasedRelation', async () => {
+    const r = await query(db, 'vehicle')
+      .select(
+        'id',
+        aliasedRelation<{ passengers: { total: number | null }[] }>('passengers', 'trips', {
+          fields: [alias<{ total: number | null }>('total', sum(db.trip.seats))],
+          where: ne(db.trip.state, 'COMPLETED'),
+        }),
+      )
+      .where(eq(db.vehicle.id, ID.v1))
+      .one()
+    assert.ok(r)
+    // v1's non-COMPLETED trip: t1 (2 seats)
+    assert.equal(r.passengers[0].total, 2)
+  })
+
+  it('avg(seats) renders avg(seats)', () => {
+    const { queryStr } = query(db, 'vehicle')
+      .select(
+        'id',
+        aliasedRelation<{ avg: { avgSeats: number | null }[] }>('avg', 'trips', {
+          fields: [alias<{ avgSeats: number | null }>('avgSeats', avg(db.trip.seats))],
+        }),
+      )
+      .where(eq(db.vehicle.id, ID.v1))
+      .toOQL()
+    assert.ok(queryStr.includes('avgSeats: (avg(seats))'))
+  })
+
+  it('min/max render correctly', () => {
+    const { queryStr: q1 } = query(db, 'user')
+      .select(alias<{ earliest: Date | null }>('earliest', min(db.user.lastLoginAt)))
+      .toOQL()
+    assert.ok(q1.includes('earliest: (min(lastLoginAt))'))
+
+    const { queryStr: q2 } = query(db, 'user')
+      .select(alias<{ latest: Date | null }>('latest', max(db.user.lastLoginAt)))
+      .toOQL()
+    assert.ok(q2.includes('latest: (max(lastLoginAt))'))
   })
 })
 

@@ -84,6 +84,9 @@ export function coalesce(...args: AnyArg[]): any {
 }
 
 // ─── Aggregates ─────────────────────────────────────────────────────
+//
+// count() is always non-null (0 on empty set). sum/avg/min/max always
+// return nullable because an empty set (or all-NULL set) yields NULL.
 
 export function count(x: FieldRef<any> | '*' = '*'): OQLExpr<number> & FieldRef<number> {
   if (x === '*') {
@@ -101,4 +104,28 @@ export function count(x: FieldRef<any> | '*' = '*'): OQLExpr<number> & FieldRef<
     return expr
   }
   return makeCall('count', [x])
+}
+
+export function sum<T extends FieldRef<number | null>>(
+  x: T,
+): OQLExpr<number | null> & FieldRef<number | null> {
+  return makeCall('sum', [x])
+}
+
+export function avg<T extends FieldRef<number | null>>(
+  x: T,
+): OQLExpr<number | null> & FieldRef<number | null> {
+  return makeCall('avg', [x])
+}
+
+export function min<T>(
+  x: FieldRef<T>,
+): OQLExpr<T | null> & FieldRef<T | null> {
+  return makeCall('min', [x]) as any
+}
+
+export function max<T>(
+  x: FieldRef<T>,
+): OQLExpr<T | null> & FieldRef<T | null> {
+  return makeCall('max', [x]) as any
 }
