@@ -260,7 +260,7 @@ describe('runtime: projections', () => {
 
   it('aliased projection: returnTripId: (returnTripFor.id)', async () => {
     const r = await query(db, 'trip')
-      .select('id', alias<{ returnTripId: string | null }>('returnTripId', db.trip.returnTripFor.id))
+      .select('id', alias('returnTripId', db.trip.returnTripFor.id))
       .where(eq(db.trip.id, ID.t3))
       .one()
     assert.ok(r)
@@ -454,7 +454,7 @@ describe('runtime: typed aggregates', () => {
       .select(
         'id',
         aliasedRelation<{ passengers: { total: number | null }[] }>('passengers', 'trips', {
-          fields: [alias<{ total: number | null }>('total', sum(db.trip.seats))],
+          fields: [alias('total', sum(db.trip.seats))],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
       )
@@ -470,7 +470,7 @@ describe('runtime: typed aggregates', () => {
       .select(
         'id',
         aliasedRelation<{ avg: { avgSeats: number | null }[] }>('avg', 'trips', {
-          fields: [alias<{ avgSeats: number | null }>('avgSeats', avg(db.trip.seats))],
+          fields: [alias('avgSeats', avg(db.trip.seats))],
         }),
       )
       .where(eq(db.vehicle.id, ID.v1))
@@ -480,12 +480,12 @@ describe('runtime: typed aggregates', () => {
 
   it('min/max render correctly', () => {
     const { queryStr: q1 } = query(db, 'user')
-      .select(alias<{ earliest: Date | null }>('earliest', min(db.user.lastLoginAt)))
+      .select(alias('earliest', min(db.user.lastLoginAt)))
       .toOQL()
     assert.ok(q1.includes('earliest: (min(lastLoginAt))'))
 
     const { queryStr: q2 } = query(db, 'user')
-      .select(alias<{ latest: Date | null }>('latest', max(db.user.lastLoginAt)))
+      .select(alias('latest', max(db.user.lastLoginAt)))
       .toOQL()
     assert.ok(q2.includes('latest: (max(lastLoginAt))'))
   })

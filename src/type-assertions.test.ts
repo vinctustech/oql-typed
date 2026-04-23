@@ -64,8 +64,16 @@ describe('type: field ref inference', () => {
   type T10 = AssertTrue<AssertEqual<typeof db.trip.store.account.name, FieldRef<string>>>
 
   // --- Self-referential manyToOne (trip.returnTripFor → trip) ---
-  type T11 = AssertTrue<AssertEqual<typeof db.trip.returnTripFor.id, FieldRef<string>>>
-  type T12 = AssertTrue<AssertEqual<typeof db.trip.returnTripFor.state, FieldRef<TripState>>>
+  // returnTripFor is a nullable manyToOne: any field reached through it is
+  // nullable regardless of the column's own nullability.
+  type T11 = AssertTrue<AssertEqual<typeof db.trip.returnTripFor.id, FieldRef<string | null>>>
+  type T12 = AssertTrue<
+    AssertEqual<typeof db.trip.returnTripFor.state, FieldRef<TripState | null>>
+  >
+  // Chained through a nullable hop stays nullable even if subsequent hops are non-null
+  type T11a = AssertTrue<
+    AssertEqual<typeof db.trip.returnTripFor.store.id, FieldRef<string | null>>
+  >
 
   // --- Enum type narrows to literal union ---
   type T13 = AssertTrue<AssertEqual<typeof db.trip.state, FieldRef<TripState>>>
@@ -255,7 +263,7 @@ describe('type: projection inference', () => {
   // --- Aliased projection: contributes typed key to result ---
   async function _alias() {
     const r = await query(db, 'trip')
-      .select('id', alias<{ returnTripId: string | null }>('returnTripId', db.trip.returnTripFor.id))
+      .select('id', alias('returnTripId', db.trip.returnTripFor.id))
       .one()
     type _ = AssertTrue<
       AssertEqual<typeof r, { id: string; returnTripId: string | null } | undefined>

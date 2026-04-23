@@ -38,9 +38,42 @@ export interface RelationFieldRef<S extends Schema = Schema, Target extends keyo
   readonly builder: Relation<any, any, any>
 }
 
-// manyToOne also exposes target entity's fields (dotted path) via intersection
-export type ManyToOneFieldRef<S extends Schema, Target extends keyof S> =
-  RelationFieldRef<S, Target, 'manyToOne'> & FieldRefsFor<S, Target>
+// manyToOne also exposes target entity's fields (dotted path) via intersection.
+// `ParentNullable` propagates through the chain: any hop through a nullable
+// manyToOne makes every downstream scalar/relation nullable.
+// e.g. db.trip.returnTripFor.id is FieldRef<string | null> because
+// returnTripFor is a nullable manyToOne even though the id column itself
+// is non-null.
+export type ManyToOneFieldRef<
+  S extends Schema,
+  Target extends keyof S,
+  ParentNullable extends boolean = false,
+> =
+  RelationFieldRef<S, Target, 'manyToOne'> & ChainedFieldRefsFor<S, Target, ParentNullable>
+
+// OR on two boolean literal types
+type OrBool<A extends boolean, B extends boolean> = A extends true
+  ? true
+  : B extends true
+    ? true
+    : false
+
+// Like FieldRefsFor, but applies ParentNullable to every scalar and propagates
+// through nested manyToOne hops. Non-manyToOne relations stop the chain (OQL
+// does not surface `.field` access on oneToMany/manyToMany collections).
+type ChainedFieldRefsFor<S extends Schema, Name extends keyof S, ParentNullable extends boolean> = {
+  readonly [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, infer N, any>
+    ? FieldRef<
+        ParentNullable extends true ? T | null : N extends true ? T | null : T
+      >
+    : Unwrap<S[Name]>[K] extends Relation<infer RTarget, infer RKind, infer RNullable>
+      ? RTarget extends keyof S
+        ? RKind extends 'manyToOne'
+          ? ManyToOneFieldRef<S, RTarget, OrBool<ParentNullable, RNullable>>
+          : RelationFieldRef<S, RTarget, RKind>
+        : never
+      : never
+}
 
 // ══════════════════════════════════════════════════════════════════════
 // Extract scalar / relation fields from an entity's definition
@@ -65,10 +98,10 @@ export type NonPKScalarKeys<D> = {
 export type FieldRefsFor<S extends Schema, Name extends keyof S> = {
   readonly [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, infer N, any>
     ? FieldRef<N extends true ? T | null : T>
-    : Unwrap<S[Name]>[K] extends Relation<infer Target, infer Kind, any>
+    : Unwrap<S[Name]>[K] extends Relation<infer Target, infer Kind, infer Nullable>
       ? Target extends keyof S
         ? Kind extends 'manyToOne'
-          ? ManyToOneFieldRef<S, Target>
+          ? ManyToOneFieldRef<S, Target, Nullable>
           : RelationFieldRef<S, Target, Kind>
         : never
       : never

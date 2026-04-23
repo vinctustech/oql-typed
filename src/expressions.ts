@@ -106,15 +106,18 @@ export function subquery<T = unknown>(
 // ══════════════════════════════════════════════════════════════════════
 // alias(label, expr) — projection with alias: returnTripId: (returnTrip.id)
 //
-// Parameterized by the RESULT SHAPE so the projection result is typed:
-// alias<{ returnTripId: string }>('returnTripId', ...) contributes
-// { returnTripId: string } to the inferred projection.
+// Label and value type are inferred from the arguments:
+//   alias('avgSeats', avg(db.trip.seats))
+// contributes { avgSeats: number | null } to the inferred projection.
 // ══════════════════════════════════════════════════════════════════════
 
-export function alias<Shape extends Record<string, unknown>>(
-  label: string,
-  field: FieldRef<any> | OQLExpr<any>,
-): OQLExpr<Shape> & OQLProjectionArg & { _projectionType: Shape } {
+type AliasShape<Label extends string, T> = { [K in Label]: T }
+
+export function alias<Label extends string, T>(
+  label: Label,
+  field: FieldRef<T> | OQLExpr<T>,
+): OQLExpr<AliasShape<Label, T>> &
+  OQLProjectionArg & { _projectionType: AliasShape<Label, T> } {
   const inner: any = field
   return {
     __oqlExpr: true,
