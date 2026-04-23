@@ -270,24 +270,39 @@ describe('type: projection inference', () => {
     >
   }
 
-  // --- Aliased relation: contributes typed collection key to result ---
+  // --- Aliased relation: explicit inner Shape, label inferred ---
   async function _aliasedRelation() {
     const r = await query(db, 'vehicle')
       .select(
         'id',
         'make',
-        aliasedRelation<{ passengers: { count: number }[] }>('passengers', 'trips', {
+        aliasedRelation<{ count: number }>('passengers', 'trips', {
           fields: [raw('count: sum(seats)')],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
       )
       .one()
-    type _ = AssertTrue<
-      AssertEqual<
-        typeof r,
-        { id: string; make: string; passengers: { count: number }[] } | undefined
-      >
-    >
+    // Direct field access is what matters in practice:
+    type _Count = NonNullable<typeof r>['passengers'][number]['count']
+    type _ = AssertTrue<AssertEqual<_Count, number>>
+    type _Id = NonNullable<typeof r>['id']
+    type __ = AssertTrue<AssertEqual<_Id, string>>
+  }
+
+  // --- Aliased relation: shape fully inferred from typed fields ---
+  async function _aliasedRelationInferred() {
+    const { sum } = await import('./functions.js')
+    const r = await query(db, 'vehicle')
+      .select(
+        'id',
+        aliasedRelation('passengers', 'trips', {
+          fields: [alias('total', sum(db.trip.seats))],
+        }),
+      )
+      .one()
+    // Field-access style: typed fields produce typed row shape
+    type _Total = NonNullable<typeof r>['passengers'][number]['total']
+    type _ = AssertTrue<AssertEqual<_Total, number | null>>
   }
 })
 

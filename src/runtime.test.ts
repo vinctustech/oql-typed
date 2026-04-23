@@ -290,7 +290,7 @@ describe('runtime: projections', () => {
       .select(
         'id',
         'make',
-        aliasedRelation<{ passengers: { count: number }[] }>('passengers', 'trips', {
+        aliasedRelation<{ count: number }>('passengers', 'trips', {
           fields: [raw('count: sum(seats)')],
           where: and(ne(db.trip.state, 'COMPLETED'), ne(db.trip.state, 'CANCELLED')),
         }),
@@ -307,7 +307,7 @@ describe('runtime: projections', () => {
     const { queryStr } = query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ passengers: { count: number }[] }>('passengers', 'trips', {
+        aliasedRelation<{ count: number }>('passengers', 'trips', {
           fields: [raw('count: sum(seats)')],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
@@ -322,15 +322,11 @@ describe('runtime: projections', () => {
     const r = await query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ activeTrips: { id: string; state: string }[] }>(
-          'activeTrips',
-          'trips',
-          {
-            fields: ['id', 'state'],
-            where: ne(db.trip.state, 'COMPLETED'),
-            orderBy: [desc(db.trip.createdAt)],
-          },
-        ),
+        aliasedRelation<{ id: string; state: string }>('activeTrips', 'trips', {
+          fields: ['id', 'state'],
+          where: ne(db.trip.state, 'COMPLETED'),
+          orderBy: [desc(db.trip.createdAt)],
+        }),
       )
       .where(eq(db.vehicle.id, ID.v1))
       .one()
@@ -345,7 +341,7 @@ describe('runtime: projections', () => {
     const { queryStr } = query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ allTrips: { id: string }[] }>('allTrips', 'trips', {
+        aliasedRelation<{ id: string }>('allTrips', 'trips', {
           fields: ['id'],
         }),
       )
@@ -449,11 +445,11 @@ describe('runtime: ordering + pagination', () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe('runtime: typed aggregates', () => {
-  it('sum(seats) inside aliasedRelation', async () => {
+  it('sum(seats) inside aliasedRelation — shape fully inferred', async () => {
     const r = await query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ passengers: { total: number | null }[] }>('passengers', 'trips', {
+        aliasedRelation('passengers', 'trips', {
           fields: [alias('total', sum(db.trip.seats))],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
@@ -469,7 +465,7 @@ describe('runtime: typed aggregates', () => {
     const { queryStr } = query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ avg: { avgSeats: number | null }[] }>('avg', 'trips', {
+        aliasedRelation('avg', 'trips', {
           fields: [alias('avgSeats', avg(db.trip.seats))],
         }),
       )

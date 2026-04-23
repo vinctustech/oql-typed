@@ -136,10 +136,31 @@ export function alias<Label extends string, T>(
 // aliasedRelation(alias, relation, spec) — alias a sub-collection projection:
 //   passengers: trips {count: sum(seats)} [state != 'COMPLETED']
 //
-// Shape is user-specified and contributes to the inferred projection result.
-// Fields may be scalar names, OQL expressions (e.g. raw('count: sum(seats)'))
-// or nested relation objects accepted by the ordinary projection syntax.
+// The outer key is inferred from the `alias` argument. The inner row shape
+// is inferred from any typed expressions in `spec.fields` (e.g. entries
+// built with `alias(...)` over typed aggregates like `sum(...)`).
+//
+// For untyped fields (scalar field names, `raw('...')`) the caller can
+// provide an explicit inner Shape as the first type argument:
+//   aliasedRelation<{ count: number }>('passengers', 'trips', { fields: [raw('count: sum(seats)')] })
+//
+// When Shape is provided, it overrides inference. When it is not, inference
+// merges every typed-field `_projectionType` into the inner row shape.
 // ══════════════════════════════════════════════════════════════════════
+
+type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void
+  ? I
+  : never
+
+// Extract `_projectionType` contributions from each field entry and intersect them.
+// Fields without a typed projection (raw, scalar strings) contribute nothing.
+type InferAliasedRelRow<Fields extends readonly any[]> = UnionToIntersection<
+  Fields[number] extends { readonly _projectionType?: infer P }
+    ? P extends Record<string, unknown>
+      ? P
+      : never
+    : never
+>
 
 export interface AliasedRelationSpec {
   readonly fields: readonly (string | OQLExpr<any> | Record<string, any>)[]
@@ -147,11 +168,34 @@ export interface AliasedRelationSpec {
   readonly orderBy?: readonly OrderExpr[]
 }
 
-export function aliasedRelation<Shape extends Record<string, unknown>>(
-  alias: string,
+// Prettify an object type to a flat literal — collapses intersections and
+// makes AssertEqual produce a stable result.
+type Prettify<T> = { [K in keyof T]: T[K] } & {}
+
+type AliasedRelResult<
+  Shape extends Record<string, unknown>,
+  Label extends string,
+  Fields extends readonly any[],
+> = Prettify<{
+  [K in Label]: ([Shape] extends [never] ? InferAliasedRelRow<Fields> : Shape)[]
+}>
+
+export function aliasedRelation<
+  Shape extends Record<string, unknown> = never,
+  const Label extends string = string,
+  const Fields extends readonly (string | OQLExpr<any> | Record<string, any>)[] = readonly (
+    | string
+    | OQLExpr<any>
+    | Record<string, any>
+  )[],
+>(
+  alias: Label,
   relation: string,
-  spec: AliasedRelationSpec,
-): OQLExpr<Shape> & OQLProjectionArg & { _projectionType: Shape } {
+  spec: Omit<AliasedRelationSpec, 'fields'> & { readonly fields: Fields },
+): OQLExpr<AliasedRelResult<Shape, Label, Fields>> &
+  OQLProjectionArg & {
+    _projectionType: AliasedRelResult<Shape, Label, Fields>
+  } {
   return {
     __oqlExpr: true,
     _type: undefined as any,
