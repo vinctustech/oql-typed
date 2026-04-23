@@ -181,6 +181,21 @@ describe('type: projection inference', () => {
     >
   }
 
+  // Narrowing a nullable manyToOne in a projection result preserves the
+  // fields' non-nullable types (regression test for a false-alarm bug
+  // report that was actually caused by an entity class with `id: string |
+  // undefined` being mixed into the inferred type via an `as Entity` cast
+  // on a caller side).
+  async function _m2oNullNarrowing() {
+    const r = await query(db, 'trip')
+      .select('id', { vehicle: ['id', 'make'] })
+      .one()
+    if (r && r.vehicle) {
+      const vehicleId: string = r.vehicle.id
+      type _V = AssertTrue<AssertEqual<typeof vehicleId, string>>
+    }
+  }
+
   // --- Nested oneToMany: array ---
   async function _o2m() {
     const r = await query(db, 'store')
