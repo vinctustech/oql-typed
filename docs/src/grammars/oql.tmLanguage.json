@@ -1,7 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "OQL",
+  "name": "oql",
+  "displayName": "OQL",
   "scopeName": "source.oql",
+  "aliases": ["dm"],
   "fileTypes": ["oql", "dm"],
   "patterns": [
     { "include": "#comment" },
