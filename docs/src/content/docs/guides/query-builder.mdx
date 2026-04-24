@@ -1,0 +1,105 @@
+---
+title: Conditional QueryBuilder
+description: Use .cond(value, filter) to build paginated list endpoints with optional filters.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+Most list endpoints have a shape like: always filter by `enabled = true`, and optionally filter by a search term, a role, a date range, etc. `queryBuilder(db, 'entity')` makes that pattern declarative.
+
+## `.cond(value, filter)`
+
+`queryBuilder` has everything `query` does, plus a `.cond(value, filter)` method that applies `filter` only when `value` is truthy.
+
+<Tabs syncKey="cond">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { queryBuilder, eq, ilike, desc } from '@vinctus/oql-typed'
+
+    const results = await queryBuilder(db, 'user')
+      .select('id', 'firstName', 'role')
+      .where(eq(db.user.enabled, true))
+      .cond(role,   eq(db.user.role, role))                     // applied if role is truthy
+      .cond(search, ilike(db.user.firstName, `%${search}%`))    // applied if search is truthy
+      .orderBy(desc(db.user.lastLoginAt))
+      .limit(size)
+      .offset(page * size)
+      .many()
+    ```
+  </TabItem>
+  <TabItem label="No filters">
+    ```oql
+    user {id firstName role} [enabled = :p0]
+      <lastLoginAt DESC>
+      |50, 0|
+    ```
+  </TabItem>
+  <TabItem label="Role filter only">
+    ```oql
+    user {id firstName role}
+      [enabled = :p0 AND role = :p1]
+      <lastLoginAt DESC>
+      |50, 0|
+    ```
+  </TabItem>
+  <TabItem label="Both filters">
+    ```oql
+    user {id firstName role}
+      [enabled = :p0 AND role = :p1 AND firstName ILIKE :p2]
+      <lastLoginAt DESC>
+      |50, 0|
+    ```
+  </TabItem>
+</Tabs>
+
+Falsy values skip the filter entirely — no empty `WHERE` clause, no wasted parameter slots.
+
+## List + total count
+
+For paginated endpoints that return both a page of rows and a total count, build the query once and run two terminals:
+
+```typescript
+const base = queryBuilder(db, 'post')
+  .select('id', 'title', { author: ['firstName'] })
+  .where(eq(db.post.status, 'PUBLISHED'))
+  .cond(search, ilike(db.post.title, `%${search}%`))
+  .cond(categoryId, eq(db.post.category, categoryId))
+
+const [items, total] = await Promise.all([
+  base.orderBy(desc(db.post.publishedAt)).limit(size).offset(page * size).many(),
+  base.count(),
+])
+```
+
+<Aside type="note">
+`queryBuilder` returns a reusable builder — `.many()`, `.count()`, and `.one()` don't mutate the builder, so you can call several terminals on the same instance.
+</Aside>
+
+## Realistic endpoint
+
+A typical REST handler combining query-string parsing, conditional filters, and pagination:
+
+```typescript
+// Express / similar
+app.get('/posts', async (req, res) => {
+  const { search, status, categoryId, page = 0, size = 25 } = req.query
+
+  const base = queryBuilder(db, 'post')
+    .select('id', 'title', 'slug', 'publishedAt', { author: ['id', 'firstName'] })
+    .where(eq(db.post.status, 'PUBLISHED'))
+    .cond(search, ilike(db.post.title, `%${search}%`))
+    .cond(status, eq(db.post.status, status))
+    .cond(categoryId, eq(db.post.category, categoryId))
+
+  const [items, total] = await Promise.all([
+    base
+      .orderBy(desc(db.post.publishedAt))
+      .limit(Number(size))
+      .offset(Number(page) * Number(size))
+      .many(),
+    base.count(),
+  ])
+
+  res.json({ items, total })
+})
+```

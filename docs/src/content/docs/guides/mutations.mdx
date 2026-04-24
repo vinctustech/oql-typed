@@ -1,0 +1,118 @@
+---
+title: Mutations
+description: insert() and update() with typed inputs and typed returns.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+Mutations have the same type-safety guarantees as queries — the input shape is enforced, nullable fields are honored, and the returned row is fully typed.
+
+## `insert(oql, entity, input)`
+
+The input is typed:
+
+- Non-nullable columns with no default → **required**
+- Nullable columns → **optional** (omit to insert `NULL`)
+- `manyToOne` relations → accept the FK id directly
+
+<Tabs syncKey="insert">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { insert } from '@vinctus/oql-typed'
+
+    const alice = await insert(oql, user, {
+      id:        crypto.randomUUID(),
+      email:     'alice@example.com',
+      firstName: 'Alice',
+      lastName:  'Adams',
+      role:      'AUTHOR',
+      enabled:   true,
+      // rating, metadata, lastLoginAt omitted — all nullable
+    })
+    // => {
+    //      id: string,
+    //      email: string,
+    //      firstName: string,
+    //      lastName: string,
+    //      role: 'ADMIN' | 'AUTHOR' | 'READER',
+    //      enabled: boolean,
+    //      rating: number | null,
+    //      metadata: unknown | null,
+    //      lastLoginAt: Date | null,
+    //    }
+    ```
+  </TabItem>
+  <TabItem label="With a manyToOne FK">
+    ```typescript
+    const draft = await insert(oql, post, {
+      id:        crypto.randomUUID(),
+      title:     'Hello',
+      slug:      'hello',
+      body:      '...',
+      status:    'DRAFT',
+      featured:  false,
+      viewCount: 0,
+      wordCount: 0n,
+      createdAt: new Date(),
+      keywords:  [],
+      visitHistogram: [],
+      author:    alice.id,   // ← FK id for the manyToOne
+      // category, reviewedBy, publishedAt, publishedOn, publishTime,
+      // editWindow, readingTime, metadata omitted — all nullable
+    })
+    ```
+  </TabItem>
+  <TabItem label="What the compiler rejects">
+    ```typescript
+    insert(oql, user, {
+      id:        crypto.randomUUID(),
+      email:     'bob@example.com',
+      // ✗ missing required: firstName, lastName, role, enabled
+    })
+    // → Type error: missing required fields
+
+    insert(oql, user, {
+      id:        crypto.randomUUID(),
+      email:     'bob@example.com',
+      firstName: 'Bob',
+      lastName:  'Brown',
+      role:      'SUPERADMIN',   // ✗ not in UserRole
+      enabled:   true,
+    })
+    // → Type error: 'SUPERADMIN' not assignable to 'ADMIN' | 'AUTHOR' | 'READER'
+    ```
+  </TabItem>
+</Tabs>
+
+## `update(oql, entity, id, patch)`
+
+Every field in the patch is optional. Returns the primary key plus the fields you patched, all typed.
+
+<Tabs syncKey="update">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { update } from '@vinctus/oql-typed'
+
+    const changed = await update(oql, user, alice.id, {
+      firstName: 'Alicia',
+      role:      'ADMIN',
+    })
+    // => {
+    //      id: string,
+    //      firstName: string,
+    //      role: 'ADMIN' | 'AUTHOR' | 'READER',
+    //    }
+    ```
+  </TabItem>
+  <TabItem label="Clearing a nullable field">
+    ```typescript
+    await update(oql, post, post.id, {
+      publishedAt: null,    // explicitly clear to NULL
+    })
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="tip">
+Want to bulk-update or upsert? Mutations return typed single rows. Compose them with your own transaction helper on the backend side (e.g. PostgreSQL `pg` transactions) — `insert()` and `update()` don't implicitly span a transaction.
+</Aside>

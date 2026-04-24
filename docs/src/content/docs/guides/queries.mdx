@@ -1,0 +1,297 @@
+---
+title: Queries
+description: Project scalars and relations, filter, order, paginate — with results typed from your .select() arguments.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+`query(db, 'entity')` returns a chainable builder whose result type is inferred from `.select()`. No generics on the call site.
+
+Examples below use the blog schema from the [Schema](/oql-typed/guides/schema/) guide — `user`, `post`, `tag`, `comment`, etc.
+
+## Anatomy of a query
+
+```typescript
+const rows = await query(db, 'user')     // starter
+  .select('id', 'email')                 // projection → Result type
+  .where(eq(db.user.enabled, true))      // filter
+  .orderBy(desc(db.user.lastLoginAt))    // ordering
+  .limit(20)                              // pagination
+  .offset(0)
+  .many()                                 // terminal: Result[]
+```
+
+| Terminal | Returns |
+|----------|---------|
+| `.one()` | `Result \| undefined` |
+| `.many()` | `Result[]` |
+| `.count()` | `number` |
+| `.toOQL()` | `{ queryStr, params }` — inspect without executing |
+
+## Selecting scalars and relations
+
+Scalars are strings. Relations are objects.
+
+<Tabs syncKey="select">
+  <TabItem label="Scalars only">
+    ```typescript
+    query(db, 'user').select('id', 'firstName', 'email')
+    // → { id: string, firstName: string, email: string }[]
+    ```
+
+    ```oql
+    user {id firstName email}
+    ```
+  </TabItem>
+  <TabItem label="Simple relation">
+    ```typescript
+    query(db, 'post').select('id', 'title', { author: ['id', 'email'] })
+    // → { id: string, title: string, author: { id: string, email: string } }[]
+    ```
+
+    ```oql
+    post {
+      id
+      title
+      author {id email}
+    }
+    ```
+  </TabItem>
+  <TabItem label="Nested relations">
+    ```typescript
+    query(db, 'post').select('id', 'title', {
+      author: ['firstName', { profile: ['bio', 'website'] }],
+    })
+    // → { id, title, author: { firstName, profile: { bio, website } } }[]
+    ```
+
+    ```oql
+    post {
+      id
+      title
+      author {
+        firstName
+        profile {bio website}
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="Single-field shorthand">
+    ```typescript
+    // { author: 'id' } is equivalent to { author: ['id'] }
+    query(db, 'post').select('id', { author: 'id' })
+    // → { id: string, author: { id: string } }[]
+    ```
+  </TabItem>
+</Tabs>
+
+### Default projection
+
+If you omit `.select()` entirely, the result includes **all scalar fields** on the entity — relations are not projected.
+
+```typescript
+const categories = await query(db, 'category').many()
+// → { id: string, name: string, slug: string }[]
+```
+
+## Filtering
+
+`.where(filter)` accepts either a `FilterExpr` or a bare boolean field ref (shorthand for `eq(field, true)`).
+
+<Tabs syncKey="filter">
+  <TabItem label="Single predicate">
+    ```typescript
+    query(db, 'user').where(eq(db.user.enabled, true))
+    ```
+
+    ```oql
+    user [enabled = :p0]
+    ```
+  </TabItem>
+  <TabItem label="Boolean shorthand">
+    ```typescript
+    // Same as eq(db.post.featured, true)
+    query(db, 'post').where(db.post.featured)
+    ```
+
+    ```oql
+    post [featured]
+    ```
+  </TabItem>
+  <TabItem label="Composed">
+    ```typescript
+    query(db, 'post').where(and(
+      eq(db.post.status, 'PUBLISHED'),
+      or(eq(db.post.featured, true), gt(db.post.viewCount, 10000)),
+    ))
+    ```
+
+    ```oql
+    post [status = :p0 AND (featured = :p1 OR viewCount > :p2)]
+    ```
+  </TabItem>
+  <TabItem label="Dotted manyToOne path">
+    ```typescript
+    query(db, 'post').where(and(
+      eq(db.post.author.role, 'AUTHOR'),
+      inList(db.post.category.slug, ['typescript', 'oql']),
+    ))
+    ```
+
+    ```oql
+    post [author.role = :p0 AND category.slug IN :p1]
+    ```
+  </TabItem>
+</Tabs>
+
+## Ordering and pagination
+
+```typescript
+import { asc, desc } from '@vinctus/oql-typed'
+
+query(db, 'post')
+  .orderBy(desc(db.post.publishedAt), asc(db.post.id))
+  .limit(50)
+  .offset(page * 50)
+  .many()
+```
+
+```oql
+post <publishedAt DESC, id ASC> |50, 0|
+```
+
+## Filtered sub-collections
+
+Nested relations can carry their own `where` and `orderBy`. Use the `{ fields, where, orderBy }` long form:
+
+<Tabs syncKey="sub-collection">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { query, ne, desc } from '@vinctus/oql-typed'
+
+    query(db, 'user').select('id', 'firstName', {
+      posts: {
+        fields: ['id', 'title', 'status'],
+        where: ne(db.post.status, 'ARCHIVED'),
+        orderBy: [desc(db.post.createdAt)],
+      },
+    })
+    ```
+  </TabItem>
+  <TabItem label="Generated OQL">
+    ```oql
+    user {
+      id
+      firstName
+      posts {id title status} [status != :p0] <createdAt DESC>
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Inspecting without executing
+
+`.toOQL()` returns the exact query string and parameters the backend would receive.
+
+```typescript
+const { queryStr, params } = query(db, 'user')
+  .select('id', 'email')
+  .where(eq(db.user.enabled, true))
+  .toOQL()
+
+console.log(queryStr)  // user {id email} [enabled = :p0]
+console.log(params)    // { p0: true }
+```
+
+<Aside type="tip">
+Use `.toOQL()` in tests to assert on the query shape without hitting a database.
+</Aside>
+
+## More examples
+
+<Tabs syncKey="side-by-side">
+  <TabItem label="Search published posts">
+    ```typescript
+    query(db, 'post')
+      .select('id', 'title', 'slug', { author: ['firstName', 'lastName'] })
+      .where(and(
+        eq(db.post.status, 'PUBLISHED'),
+        ilike(db.post.title, `%${term}%`),
+      ))
+      .orderBy(desc(db.post.publishedAt))
+      .limit(25)
+      .many()
+    ```
+
+    ```oql
+    post {
+      id
+      title
+      slug
+      author {firstName lastName}
+    } [status = :p0 AND title ILIKE :p1]
+      <publishedAt DESC>
+      |25|
+    ```
+  </TabItem>
+  <TabItem label="Author with comment count">
+    ```typescript
+    query(db, 'user').select(
+      'id',
+      'firstName',
+      alias('commentCount', count('*')),
+    ).where(and(
+      eq(db.user.role, 'AUTHOR'),
+      exists(db.user.comments),
+    ))
+    ```
+
+    ```oql
+    user {
+      id
+      firstName
+      commentCount: count(*)
+    } [role = :p0 AND EXISTS(comments)]
+    ```
+  </TabItem>
+  <TabItem label="Posts tagged 'featured'">
+    ```typescript
+    query(db, 'post')
+      .select('id', 'title', { tags: ['name'] })
+      .where(exists(db.post.tags, eq(db.tag.name, 'featured')))
+    ```
+
+    ```oql
+    post {
+      id
+      title
+      tags {name}
+    } [EXISTS(tags [name = :p0])]
+    ```
+  </TabItem>
+  <TabItem label="Threaded top-level comments">
+    ```typescript
+    import { ref, isNull } from '@vinctus/oql-typed'
+
+    query(db, 'comment')
+      .select('id', 'body', { author: ['firstName'] })
+      .where(and(
+        eq(db.comment.post, postId),
+        isNull(ref(db.comment.parent)),
+      ))
+      .orderBy(desc(db.comment.createdAt))
+    ```
+
+    ```oql
+    comment {
+      id
+      body
+      author {firstName}
+    } [post.id = :p0 AND &parent IS NULL] <createdAt DESC>
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="caution">
+The parser will reject chained dotted paths inside `EXISTS` (e.g. `EXISTS(author.comments [...])`). If you need that shape, split into two queries. See [Recipes](/oql-typed/recipes/#two-step-exists-across-a-manytoone-relation).
+</Aside>

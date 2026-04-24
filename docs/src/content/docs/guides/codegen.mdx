@@ -1,0 +1,91 @@
+---
+title: DM codegen
+description: Bootstrap a TypeScript schema from an existing .dm file — useful for migrating an existing OQL project.
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+If you already have an OQL `.dm` data model, the `oql-typed-codegen` CLI generates a TypeScript schema from it. This is the fastest way to adopt `@vinctus/oql-typed` in an existing project.
+
+## Command-line
+
+<Steps>
+
+1. **Point it at your `.dm` file and an output path.**
+
+   ```bash
+   npx oql-typed-codegen schema.dm src/schema.generated.ts
+   ```
+
+2. **Import the generated entities.**
+
+   ```typescript
+   import { account, user, post } from './schema.generated.js'
+   import { typedOQL } from '@vinctus/oql-typed'
+
+   const db = typedOQL(oql, { account, user, post })
+   ```
+
+3. **Start writing typed queries.**
+
+   ```typescript
+   import { query, eq } from '@vinctus/oql-typed'
+
+   await query(db, 'user').where(eq(db.user.enabled, true)).many()
+   ```
+
+</Steps>
+
+### Reading from stdin
+
+Pipe `.dm` source in on stdin by passing `-` as the input path:
+
+```bash
+cat schema.dm | npx oql-typed-codegen -
+```
+
+When no output path is given, the generated TypeScript is printed to stdout — handy for `|`-chains or quick inspection.
+
+## Programmatic
+
+```typescript
+import { parseDMAndGenerate } from '@vinctus/oql-typed'
+
+const tsSource = parseDMAndGenerate(dmString)
+```
+
+Same output as the CLI — a TypeScript module that exports every entity in the `.dm`.
+
+## Going the other direction
+
+`generateDM(...entities)` is the inverse: it emits a `.dm` string from TypeScript entities. You normally hand the result to `new OQL_PG(dm, ...)` at startup:
+
+<Tabs syncKey="dm-direction">
+  <TabItem label="TS → DM">
+    ```typescript
+    import { generateDM } from '@vinctus/oql-typed'
+    import { user, post } from './schema.js'
+
+    const dm = generateDM(user, post)
+    // → "entity user(users) { ... } entity post(posts) { ... }"
+    ```
+  </TabItem>
+  <TabItem label="DM → TS">
+    ```typescript
+    import { parseDMAndGenerate } from '@vinctus/oql-typed'
+
+    const tsSource = parseDMAndGenerate(dmString)
+    // → "import { entity, uuid, ... } from '@vinctus/oql-typed' ..."
+    ```
+  </TabItem>
+</Tabs>
+
+## About the `@ts-nocheck` header
+
+The generated file starts with `// @ts-nocheck`. This suppresses TS7022 ("implicit any") errors that arise from circular entity references (e.g. `user` → `post` → `author: user`) under strict mode.
+
+<Aside type="note">
+Call-site type inference is unaffected. Result types, typo detection on field names, and operator type checks all work fully when you `import { query, eq, ... } from '@vinctus/oql-typed'` and use the generated schema.
+</Aside>
+
+If you'd rather author the schema by hand to keep strict checking across the file, that works too — just write the `entity(...)` calls yourself and use `generateDM()` at runtime.

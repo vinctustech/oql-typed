@@ -1,0 +1,185 @@
+---
+title: Expressions
+description: Function calls, references, subqueries, aliases, and raw OQL — for queries that need more than plain field comparisons.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+When a query needs SQL functions, subqueries, or aliased projections, oql-typed has expression helpers that plug into the type system. The escape hatch for anything unmodelled is `raw()`.
+
+## `fn(name, ...args)` — generic function call
+
+For arbitrary SQL functions without a typed wrapper:
+
+<Tabs syncKey="fn">
+  <TabItem label="Function in a filter">
+    ```typescript
+    import { fn, raw, ilike } from '@vinctus/oql-typed'
+
+    ilike(fn('concat', db.user.firstName, raw("' '"), db.user.lastName), '%john%')
+    ```
+
+    ```oql
+    concat(firstName, ' ', lastName) ILIKE :p0
+    ```
+  </TabItem>
+  <TabItem label="Function in a projection">
+    ```typescript
+    import { query, fn, alias } from '@vinctus/oql-typed'
+
+    query(db, 'user').select(
+      'id',
+      alias('fullName', fn('concat', db.user.firstName, raw("' '"), db.user.lastName)),
+    )
+    ```
+
+    ```oql
+    user {id fullName: concat(firstName, ' ', lastName)}
+    ```
+  </TabItem>
+</Tabs>
+
+### Typed function wrappers
+
+Common SQL functions have dedicated wrappers that infer the result type:
+
+```typescript
+import {
+  lower, upper, trim, length, concat, coalesce,
+  count, sum, avg, min, max,
+} from '@vinctus/oql-typed'
+```
+
+| Wrapper | Typical use |
+|---------|-------------|
+| `lower(f)`, `upper(f)`, `trim(f)` | Case-insensitive match on a field |
+| `length(f)` | Length of a string field |
+| `concat(...args)` | Build a composite value |
+| `coalesce(...args)` | First non-null of several expressions |
+| `count(f)`, `sum(f)`, `avg(f)` | Aggregates |
+| `min(f)`, `max(f)` | Min/max aggregates |
+
+```typescript
+ilike(lower(db.user.email), `%${term.toLowerCase()}%`)
+
+query(db, 'comment').select(alias('total', count('*')))
+query(db, 'post').select(alias('totalViews', sum(db.post.viewCount)))
+query(db, 'post').select(alias('avgReading', avg(db.post.readingTime)))
+```
+
+## `raw(text)` — literal OQL escape hatch
+
+When a construct isn't modelled, emit it literally.
+
+```typescript
+import { raw } from '@vinctus/oql-typed'
+
+query(db, 'post').select('id', raw('totalViews: sum(viewCount)'))
+```
+
+```oql
+post {id totalViews: sum(viewCount)}
+```
+
+<Aside type="caution">
+`raw()` bypasses the type system. Prefer typed helpers whenever possible; reach for `raw()` only for things oql-typed doesn't yet model.
+</Aside>
+
+## `ref(m2o)` — the `&` reference operator
+
+OQL's `&field` operator returns the foreign-key **column value itself**, rather than joining to the target entity. Useful when you only need to test the FK (e.g. for null-checks) without loading the related row.
+
+```typescript
+import { ref, isNull } from '@vinctus/oql-typed'
+
+isNull(ref(db.comment.parent))          // top-level comments
+```
+
+```oql
+&parent IS NULL
+```
+
+## `subquery<T>(relation, projection, filter?)` — parenthesized subquery
+
+Use a scalar subquery as a value in another expression. The generic `<T>` tells TypeScript what type the subquery resolves to:
+
+<Tabs syncKey="subq">
+  <TabItem label="Posts with no comments">
+    ```typescript
+    import { subquery, eq } from '@vinctus/oql-typed'
+
+    query(db, 'post')
+      .select('id', 'title')
+      .where(eq(subquery<number>(db.post.comments, ['count(*)']), 0))
+    ```
+
+    ```oql
+    post {id title} [(comments {count(*)}) = :p0]
+    ```
+  </TabItem>
+  <TabItem label="Users with more than 10 posts">
+    ```typescript
+    import { subquery, gt } from '@vinctus/oql-typed'
+
+    query(db, 'user')
+      .select('id', 'firstName')
+      .where(gt(subquery<number>(db.user.posts, ['count(*)']), 10))
+    ```
+
+    ```oql
+    user {id firstName} [(posts {count(*)}) > :p0]
+    ```
+  </TabItem>
+</Tabs>
+
+## `alias(label, expr)` — aliased projection
+
+`alias('label', expr)` emits `label: expression` in the projection. The alias label and inferred type both flow into the result type.
+
+```typescript
+import { alias } from '@vinctus/oql-typed'
+
+const rows = await query(db, 'comment')
+  .select('id', alias('parentId', db.comment.parent.id))
+  .many()
+// → { id: string, parentId: string | null }[]
+```
+
+```oql
+comment {id parentId: parent.id}
+```
+
+## `aliasedRelation(label, relation, spec)` — aliased sub-collection
+
+The same idea, but for a nested relation. The outer alias label and the typed inner projection both end up in the result type.
+
+<Tabs syncKey="arel">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { aliasedRelation, eq } from '@vinctus/oql-typed'
+
+    query(db, 'post').select(
+      'id',
+      'title',
+      aliasedRelation('topComments', db.post.comments, {
+        fields: ['id', 'body'],
+        where: eq(db.comment.author.role, 'ADMIN'),
+      }),
+    )
+    // → {
+    //     id: string,
+    //     title: string,
+    //     topComments: { id: string, body: string }[],
+    //   }[]
+    ```
+  </TabItem>
+  <TabItem label="Generated OQL">
+    ```oql
+    post {
+      id
+      title
+      topComments: comments {id body} [author.role = :p0]
+    }
+    ```
+  </TabItem>
+</Tabs>

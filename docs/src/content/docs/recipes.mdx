@@ -1,0 +1,227 @@
+---
+title: Recipes
+description: Real-world query patterns with the typed call, the generated OQL, and an explanation.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+Solutions to common patterns that come up when writing typed OQL. All examples use the blog schema from the [Schema](/oql-typed/guides/schema/) guide.
+
+## Paginated list with search and total count
+
+<Tabs syncKey="recipe">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { queryBuilder, eq, ilike, desc } from '@vinctus/oql-typed'
+
+    const base = queryBuilder(db, 'post')
+      .select('id', 'title', 'slug', { author: ['id', 'firstName'] })
+      .where(eq(db.post.status, 'PUBLISHED'))
+      .cond(search, ilike(db.post.title, `%${search}%`))
+
+    const [items, total] = await Promise.all([
+      base.orderBy(desc(db.post.publishedAt)).limit(25).offset(page * 25).many(),
+      base.count(),
+    ])
+    ```
+  </TabItem>
+  <TabItem label="OQL (items)">
+    ```oql
+    post {
+      id
+      title
+      slug
+      author {id firstName}
+    } [status = :p0 AND title ILIKE :p1]
+      <publishedAt DESC>
+      |25, 0|
+    ```
+  </TabItem>
+</Tabs>
+
+A single builder serves both the list and the total. `.cond()` skips the search filter entirely when `search` is empty.
+
+## Dedup / find-or-create on all four identity fields
+
+```typescript
+import { and, eq, ilike } from '@vinctus/oql-typed'
+
+const existing = await query(db, 'user')
+  .select('id', 'enabled')
+  .where(and(
+    eq(db.user.firstName, input.firstName),
+    eq(db.user.lastName,  input.lastName),
+    ilike(db.user.email,  input.email),      // case-insensitive
+  ))
+  .one()
+
+if (existing) {
+  if (!existing.enabled) {
+    await update(oql, user, existing.id, { enabled: true })
+  }
+  return existing.id
+}
+
+return (await insert(oql, user, input)).id
+```
+
+```oql
+user {id enabled} [
+  firstName = :p0 AND
+  lastName = :p1 AND
+  email ILIKE :p2
+]
+```
+
+## Case-insensitive text match
+
+Use `ilike` for wildcard matches, or `lower()` on both sides for exact case-insensitive comparisons.
+
+```typescript
+import { lower, eq } from '@vinctus/oql-typed'
+
+query(db, 'user')
+  .select('id', 'email')
+  .where(eq(lower(db.user.email), input.email.toLowerCase()))
+```
+
+```oql
+user {id email} [lower(email) = :p0]
+```
+
+## Two-step EXISTS across a manyToOne relation
+
+OQL's parser rejects chained dotted paths inside `EXISTS` (`EXISTS(author.comments [...])`). Split the check into two queries.
+
+<Tabs syncKey="two-step">
+  <TabItem label="TypeScript">
+    ```typescript
+    // 1) Find the post
+    const post = await query(db, 'post')
+      .select('id', { author: 'id' })
+      .where(eq(db.post.slug, slug))
+      .one()
+
+    if (!post) return { hasAdminComment: false }
+
+    // 2) Check from the comment side
+    const hit = await query(db, 'comment')
+      .select('id')
+      .where(and(
+        eq(db.comment.post, post.id),
+        eq(db.comment.author.role, 'ADMIN'),
+      ))
+      .one()
+
+    return { hasAdminComment: hit !== undefined }
+    ```
+  </TabItem>
+  <TabItem label="Why two queries">
+    ```oql
+    // ✗ This form is rejected by the parser:
+    post [EXISTS(author.comments [role = :p0])]
+
+    // ✓ Two queries instead:
+    post {id author {id}} [slug = :p0]
+
+    comment {id} [post.id = :p0 AND author.role = :p1]
+    ```
+  </TabItem>
+</Tabs>
+
+## Existence check without loading the related row
+
+Use `ref()` to compare the FK column directly, avoiding a join:
+
+```typescript
+import { ref, isNull } from '@vinctus/oql-typed'
+
+// Top-level comments only
+query(db, 'comment')
+  .select('id', 'body')
+  .where(and(
+    eq(db.comment.post, postId),
+    isNull(ref(db.comment.parent)),
+  ))
+```
+
+```oql
+comment {id body} [post.id = :p0 AND &parent IS NULL]
+```
+
+Without `ref()`, the query would load the `parent` entity just to check nullability.
+
+## Aggregate in a projection
+
+```typescript
+import { alias, count, sum } from '@vinctus/oql-typed'
+
+query(db, 'post').select(
+  alias('total', count('*')),
+  alias('totalViews', sum(db.post.viewCount)),
+)
+```
+
+```oql
+post {total: count(*), totalViews: sum(viewCount)}
+```
+
+## Posts by tag
+
+```typescript
+import { exists, eq } from '@vinctus/oql-typed'
+
+query(db, 'post')
+  .select('id', 'title', { tags: ['name'] })
+  .where(exists(db.post.tags, eq(db.tag.name, 'featured')))
+```
+
+```oql
+post {
+  id
+  title
+  tags {name}
+} [EXISTS(tags [name = :p0])]
+```
+
+## Threaded comment tree
+
+Fetch top-level comments and any one level of replies in a single query:
+
+```typescript
+import { query, aliasedRelation, eq, desc, ref, isNull } from '@vinctus/oql-typed'
+
+query(db, 'comment').select(
+  'id',
+  'body',
+  { author: ['firstName'] },
+  aliasedRelation('replies', db.comment.post, {
+    fields: ['id', 'body', { author: ['firstName'] }],
+    // filter replies to those whose parent is this comment — keep it simple
+    // with a separate query per depth level if you need deeper trees.
+  }),
+).where(isNull(ref(db.comment.parent)))
+```
+
+<Aside type="tip">
+For arbitrary-depth trees, fetch flat and reconstruct in application code. OQL queries are well-suited for fixed-depth nesting.
+</Aside>
+
+## Inspecting queries in tests
+
+Skip the database entirely and assert on the OQL string and parameters:
+
+```typescript
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+
+test('active users query', () => {
+  const { queryStr, params } = query(db, 'user')
+    .select('id', 'email')
+    .where(eq(db.user.enabled, true))
+    .toOQL()
+
+  assert.equal(queryStr, 'user {id email} [enabled = :p0]')
+  assert.deepEqual(params, { p0: true })
+})
+```

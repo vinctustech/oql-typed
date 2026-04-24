@@ -1,0 +1,70 @@
+---
+title: Installation
+description: Install @vinctus/oql-typed and a backend.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+## Library
+
+<Tabs syncKey="pkg">
+  <TabItem label="npm">
+    ```bash
+    npm install @vinctus/oql-typed
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add @vinctus/oql-typed
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```bash
+    yarn add @vinctus/oql-typed
+    ```
+  </TabItem>
+</Tabs>
+
+## Pick a backend
+
+`@vinctus/oql-typed` doesn't ship a database driver — it delegates to a peer backend.
+
+<Tabs>
+  <TabItem label="PostgreSQL (production)">
+    ```bash
+    npm install @vinctus/oql-pg
+    ```
+
+    ```typescript
+    import { OQL_PG } from '@vinctus/oql-pg'
+
+    const oql = new OQL_PG(
+      dm,
+      'localhost', 5432,
+      'mydb', 'user', 'pass',
+    )
+    ```
+  </TabItem>
+  <TabItem label="In-memory (tests)">
+    ```bash
+    npm install @vinctus/oql-petradb
+    ```
+
+    ```typescript
+    import { OQL_PETRADB } from '@vinctus/oql-petradb'
+
+    const oql = new OQL_PETRADB(dm)
+    // no external DB needed — perfect for unit tests
+    ```
+  </TabItem>
+</Tabs>
+
+## Requirements
+
+- **Node.js** ≥ 20
+- **TypeScript** ≥ 5.4 — uses `NoInfer<T>` to pin operator value types to the field type
+- **ESM** — set `"type": "module"` in your `package.json`
+
+<Aside type="tip">
+You can mix the two backends: run production against PostgreSQL via `@vinctus/oql-pg` and your test suite against `@vinctus/oql-petradb`. The same schema definition works with both.
+</Aside>

@@ -1,0 +1,170 @@
+---
+title: Operators
+description: Every filter operator, with an example and the OQL it produces.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+All operators take a typed field reference (obtained from `db.entity.field`) and produce a `FilterExpr`. Values are always parameterized — you never build SQL strings by hand.
+
+## Comparison
+
+<Tabs syncKey="op">
+  <TabItem label="eq / ne">
+    ```typescript
+    import { eq, ne } from '@vinctus/oql-typed'
+
+    eq(db.user.enabled, true)
+    ne(db.post.status, 'ARCHIVED')
+    ```
+
+    ```oql
+    enabled = :p0
+    status != :p0
+    ```
+  </TabItem>
+  <TabItem label="gt / gte / lt / lte">
+    ```typescript
+    import { gt, gte, lt, lte } from '@vinctus/oql-typed'
+
+    gt(db.post.viewCount, 1000)
+    gte(db.post.createdAt, cutoff)
+    lt(db.post.wordCount, 500n)
+    lte(db.user.lastLoginAt, monthAgo)
+    ```
+
+    ```oql
+    viewCount > :p0
+    createdAt >= :p0
+    wordCount < :p0
+    lastLoginAt <= :p0
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="note">
+Comparison operators use `NoInfer<T>` to pin the value type to the field's type. `eq(db.user.role, 'SUPERADMIN')` is a compile error if `'SUPERADMIN'` is not in the role enum.
+</Aside>
+
+## Logical
+
+```typescript
+import { and, or, not } from '@vinctus/oql-typed'
+
+and(eq(db.user.enabled, true), eq(db.user.role, 'ADMIN'))
+or(eq(db.post.status, 'DRAFT'), eq(db.post.status, 'PUBLISHED'))
+not(eq(db.user.enabled, true))
+```
+
+```oql
+enabled = :p0 AND role = :p1
+(status = :p0 OR status = :p1)
+NOT (enabled = :p0)
+```
+
+## List membership
+
+```typescript
+import { inList, notInList } from '@vinctus/oql-typed'
+
+inList(db.user.role, ['ADMIN', 'AUTHOR'])
+notInList(db.post.status, ['ARCHIVED'])
+```
+
+```oql
+role IN :p0
+status NOT IN :p0
+```
+
+## String match
+
+`like` and `ilike` also accept `FieldRef<string | null>`. In SQL `NULL LIKE 'x'` evaluates to `NULL`, which the filter treats as false.
+
+```typescript
+import { like, ilike } from '@vinctus/oql-typed'
+
+ilike(db.user.email, '%@example.com')
+like(db.post.slug, 'getting-started-%')
+```
+
+```oql
+email ILIKE :p0
+slug LIKE :p0
+```
+
+## Range
+
+```typescript
+import { between } from '@vinctus/oql-typed'
+
+between(db.post.createdAt, start, end)
+between(db.post.viewCount, 100, 10000)
+```
+
+```oql
+createdAt BETWEEN :p0 AND :p1
+viewCount BETWEEN :p0 AND :p1
+```
+
+## Null
+
+```typescript
+import { isNull, isNotNull } from '@vinctus/oql-typed'
+
+isNull(db.post.publishedAt)
+isNotNull(db.user.lastLoginAt)
+```
+
+```oql
+publishedAt IS NULL
+lastLoginAt IS NOT NULL
+```
+
+## Existence on a relation
+
+```typescript
+import { exists, eq } from '@vinctus/oql-typed'
+
+// With a nested filter
+exists(db.user.posts, eq(db.post.status, 'PUBLISHED'))
+
+// Bare — true when the collection is non-empty
+exists(db.post.comments)
+```
+
+```oql
+EXISTS(posts [status = :p0])
+EXISTS(comments)
+```
+
+<Aside type="caution" title="EXISTS path limitation">
+OQL cannot parse dotted paths inside `EXISTS` (e.g. `EXISTS(author.posts [...])`). When you need that shape, fetch the intermediate entity first and run the existence check on the target side. See [Recipes](/oql-typed/recipes/).
+</Aside>
+
+## Ordering
+
+```typescript
+import { asc, desc } from '@vinctus/oql-typed'
+
+query(db, 'post')
+  .orderBy(desc(db.post.publishedAt), asc(db.post.id))
+```
+
+```oql
+<publishedAt DESC, id ASC>
+```
+
+## Cheat sheet
+
+| Operator | TypeScript | OQL |
+|----------|-----------|-----|
+| Equal | `eq(f, v)` | `f = :p` |
+| Not equal | `ne(f, v)` | `f != :p` |
+| Greater / less | `gt/gte/lt/lte(f, v)` | `f > :p`, `f >= :p`, ... |
+| And / or / not | `and(a, b)`, `or(a, b)`, `not(a)` | `a AND b`, `(a OR b)`, `NOT (a)` |
+| In list | `inList(f, vs)`, `notInList(f, vs)` | `f IN :p`, `f NOT IN :p` |
+| String | `like(f, p)`, `ilike(f, p)` | `f LIKE :p`, `f ILIKE :p` |
+| Between | `between(f, lo, hi)` | `f BETWEEN :p AND :q` |
+| Null | `isNull(f)`, `isNotNull(f)` | `f IS NULL`, `f IS NOT NULL` |
+| Exists | `exists(rel)`, `exists(rel, filter)` | `EXISTS(rel)`, `EXISTS(rel [filter])` |
+| Order | `asc(f)`, `desc(f)` | `f ASC`, `f DESC` |

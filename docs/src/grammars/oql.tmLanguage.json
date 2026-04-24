@@ -1,0 +1,129 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "OQL",
+  "scopeName": "source.oql",
+  "fileTypes": ["oql", "dm"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#parameter" },
+    { "include": "#pk-marker" },
+    { "include": "#not-null-marker" },
+    { "include": "#reference" },
+    { "include": "#keyword" },
+    { "include": "#type" },
+    { "include": "#function-call" },
+    { "include": "#relation-brackets" },
+    { "include": "#operator" },
+    { "include": "#punctuation" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.oql",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.oql",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.single.oql",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            { "name": "constant.character.escape.oql", "match": "\\\\." }
+          ]
+        },
+        {
+          "name": "string.quoted.double.oql",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "name": "constant.character.escape.oql", "match": "\\\\." }
+          ]
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.oql",
+      "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+    },
+    "parameter": {
+      "name": "variable.parameter.oql",
+      "match": ":[A-Za-z_][A-Za-z0-9_]*"
+    },
+    "pk-marker": {
+      "name": "keyword.operator.primary-key.oql",
+      "match": "\\*(?=[A-Za-z_])"
+    },
+    "not-null-marker": {
+      "name": "keyword.operator.not-null.oql",
+      "match": "(?<=[A-Za-z0-9_\\]\\)>])!"
+    },
+    "reference": {
+      "name": "keyword.operator.reference.oql",
+      "match": "&[A-Za-z_][A-Za-z0-9_.]*"
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "name": "keyword.control.oql",
+          "match": "(?i)\\b(AND|OR|NOT|IN|IS|LIKE|ILIKE|BETWEEN|EXISTS|ASC|DESC)\\b"
+        },
+        {
+          "name": "constant.language.oql",
+          "match": "(?i)\\b(NULL|TRUE|FALSE)\\b"
+        },
+        {
+          "name": "storage.type.entity.oql",
+          "match": "\\b(entity|enum)\\b"
+        }
+      ]
+    },
+    "type": {
+      "name": "support.type.oql",
+      "match": "(?<=:\\s*)\\b(uuid|text|integer|bigint|float|boolean|timestamp|date|time|interval|json|decimal)\\b"
+    },
+    "function-call": {
+      "name": "support.function.oql",
+      "match": "\\b(count|sum|avg|min|max|lower|upper|trim|length|concat|coalesce)(?=\\s*\\()"
+    },
+    "relation-brackets": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.relation.one-to-many.oql",
+          "match": "\\[|\\]"
+        },
+        {
+          "name": "punctuation.definition.relation.one-to-one.oql",
+          "match": "<|>"
+        }
+      ]
+    },
+    "operator": {
+      "name": "keyword.operator.oql",
+      "match": "(!=|<>|<=|>=|=|\\+|-|\\*|/|%)"
+    },
+    "punctuation": {
+      "patterns": [
+        { "name": "punctuation.definition.block.curly.oql", "match": "[{}]" },
+        { "name": "punctuation.definition.pagination.oql", "match": "\\|" },
+        { "name": "punctuation.separator.comma.oql", "match": "," },
+        { "name": "punctuation.accessor.oql", "match": "\\." }
+      ]
+    },
+    "identifier": {
+      "name": "variable.other.oql",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+    }
+  }
+}

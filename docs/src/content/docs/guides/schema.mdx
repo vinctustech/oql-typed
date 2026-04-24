@@ -1,0 +1,339 @@
+---
+title: Schema
+description: Define entities, columns, and relations — the single source of truth your queries and mutations derive from.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+Your schema is the source of truth. Define it once in TypeScript and both runtime OQL and compile-time types fall out of it.
+
+## A minimal entity
+
+```typescript
+import { entity, uuid, text, boolean } from '@vinctus/oql-typed'
+
+const category = entity('category', 'categories', {
+  id:      uuid().primaryKey(),
+  name:    text(),
+  slug:    text(),
+  enabled: boolean(),
+})
+```
+
+`entity(name, tableName?, fields)`:
+
+- **`name`** — how you refer to the entity in OQL queries (`query(db, 'category')`).
+- **`tableName`** — optional; defaults to `name`. Override when your SQL table has a different name.
+- **`fields`** — a map of column and relation definitions.
+
+## Column types and modifiers
+
+### Built-in column constructors
+
+```typescript
+import {
+  uuid, text, integer, bigint, float, decimal,
+  boolean, timestamp, date, time, interval,
+  json, textArray, integerArray, enumType,
+} from '@vinctus/oql-typed'
+```
+
+| Constructor | TypeScript type | PostgreSQL type |
+|-------------|-----------------|-----------------|
+| `uuid()` | `string` | `uuid` |
+| `text()` | `string` | `text` |
+| `integer()` | `number` | `integer` |
+| `bigint()` | `bigint` | `bigint` |
+| `float()` | `number` | `real` / `double precision` |
+| `decimal(p, s)` | `number` | `decimal(p,s)` |
+| `boolean()` | `boolean` | `boolean` |
+| `timestamp()` | `Date` | `timestamp` |
+| `date()` | `string` | `date` |
+| `time()` | `string` | `time` |
+| `interval()` | `string` | `interval` |
+| `json()` | `unknown` | `json` / `jsonb` |
+| `textArray()` | `string[]` | `text[]` |
+| `integerArray()` | `number[]` | `integer[]` |
+| `enumType<T>(name, values)` | `T` | custom enum |
+
+### Modifiers
+
+Chain modifiers after a column constructor:
+
+```typescript
+const user = entity('user', 'users', {
+  id:          uuid().primaryKey(),                             // marks PK
+  firstName:   text().column('first_name'),                     // renames column
+  email:       text(),
+  lastLoginAt: timestamp().column('last_login_at').nullable(),  // nullable + rename
+})
+```
+
+| Modifier | Effect |
+|----------|--------|
+| `.primaryKey()` | Marks this column as the primary key. |
+| `.nullable()` | Adds `\| null` to the inferred type; the column is allowed to be `NULL`. |
+| `.column('alias')` | Uses a different database column name than the TypeScript field name. |
+
+<Aside type="note">
+`.nullable()` changes both the TypeScript type and the generated DM definition. Mismatching nullability between your schema and the database is one of the most common bugs typed queries catch.
+</Aside>
+
+## Enums
+
+```typescript
+type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
+const post = entity('post', 'posts', {
+  id:     uuid().primaryKey(),
+  title:  text(),
+  status: enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
+})
+```
+
+Operators reject invalid enum values at compile time:
+
+```typescript
+eq(db.post.status, 'PUBLISHED')   // ✓
+eq(db.post.status, 'APPROVED')    // ✗ type error
+```
+
+## Relations
+
+| Constructor | Shape at the type level | OQL emits |
+|-------------|-------------------------|-----------|
+| `manyToOne(() => target, { column })` | One target row | LEFT JOIN |
+| `oneToMany(() => target)` | `Target[]` | lateral subquery |
+| `manyToMany(() => target, { junction })` | `Target[]` | lateral subquery with junction join |
+| `oneToOne(() => target, opts?)` | One target row | lateral subquery (single) |
+
+Targets are wrapped in a thunk `() => target` so circular references resolve correctly.
+
+### manyToOne — foreign key
+
+```typescript
+const post = entity('post', 'posts', {
+  id:       uuid().primaryKey(),
+  title:    text(),
+  author:   manyToOne(() => user,     { column: 'author_id' }),
+  category: manyToOne(() => category, { column: 'category_id' }).nullable(),
+})
+```
+
+With `manyToOne`, field access builds **dotted paths** that keep their types:
+
+```typescript
+db.post.author             // RelationFieldRef
+db.post.author.id          // FieldRef<string>
+db.post.author.email       // FieldRef<string> (one-level hop)
+db.post.category.id        // FieldRef<string | null> (propagates nullability)
+```
+
+### oneToMany — reverse FK
+
+```typescript
+const user = entity('user', 'users', {
+  id:    uuid().primaryKey(),
+  posts: oneToMany(() => post),
+})
+```
+
+### manyToMany — junction table
+
+```typescript
+const post = entity('post', 'posts', {
+  id:   uuid().primaryKey(),
+  tags: manyToMany(() => tag, { junction: 'post_tags' }),
+})
+
+const tag = entity('tag', 'tags', {
+  id:    uuid().primaryKey(),
+  name:  text(),
+  posts: manyToMany(() => post, { junction: 'post_tags' }),
+})
+```
+
+### oneToOne
+
+```typescript
+const user = entity('user', 'users', {
+  id:      uuid().primaryKey(),
+  profile: oneToOne(() => profile),
+})
+
+const profile = entity('profile', 'profiles', {
+  id:      uuid().primaryKey(),
+  user:    manyToOne(() => user, { column: 'user_id' }),
+  bio:     text(),
+  website: text().nullable(),
+})
+```
+
+### Self-referencing manyToOne
+
+Relations can target the same entity — useful for trees (threaded comments, category hierarchies, reply chains):
+
+```typescript
+const comment = entity('comment', 'comments', {
+  id:     uuid().primaryKey(),
+  body:   text(),
+  parent: manyToOne(() => comment, { column: 'parent_id' }).nullable(),
+})
+```
+
+### Two relations to the same target
+
+Nothing special — just give them different names and columns:
+
+```typescript
+const post = entity('post', 'posts', {
+  id:         uuid().primaryKey(),
+  title:      text(),
+  author:     manyToOne(() => user, { column: 'author_id' }),
+  reviewedBy: manyToOne(() => user, { column: 'reviewed_by_id' }).nullable(),
+})
+```
+
+## Generating the OQL data model
+
+OQL itself is driven by a `.dm` string. `generateDM(...entities)` produces it from your TypeScript schema:
+
+<Tabs syncKey="dm-roundtrip">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { generateDM } from '@vinctus/oql-typed'
+    import { user, post, tag } from './schema.js'
+
+    const dm = generateDM(user, post, tag)
+    ```
+  </TabItem>
+  <TabItem label="Generated .dm">
+    ```oql
+    entity user(users) {
+      *id: uuid
+      email: text!
+      firstName(first_name): text!
+      lastName(last_name): text!
+      role: UserRole!
+      enabled: boolean!
+      lastLoginAt(last_login_at): timestamp
+      posts: [posts]
+    }
+
+    entity post(posts) {
+      *id: uuid
+      title: text!
+      slug: text!
+      status: PostStatus!
+      viewCount(view_count): integer!
+      createdAt(created_at): timestamp!
+      author(author_id): users
+      tags: [tags](post_tags)
+    }
+
+    entity tag(tags) {
+      *id: uuid
+      name: text!
+      posts: [posts](post_tags)
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="tip">
+You can also start from an existing `.dm` file. See [DM codegen](/oql-typed/guides/codegen/).
+</Aside>
+
+## The full blog schema
+
+Every column type, every relation kind, every modifier. The examples elsewhere in these docs draw from this schema.
+
+```typescript
+import {
+  entity, uuid, text, integer, bigint, float, decimal,
+  boolean, timestamp, date, time, interval,
+  json, textArray, integerArray, enumType,
+  manyToOne, oneToMany, manyToMany, oneToOne,
+} from '@vinctus/oql-typed'
+
+type UserRole = 'ADMIN' | 'AUTHOR' | 'READER'
+type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
+const user = entity('user', 'users', {
+  id:          uuid().primaryKey(),
+  email:       text(),
+  firstName:   text().column('first_name'),
+  lastName:    text().column('last_name'),
+  role:        enumType<UserRole>('UserRole', ['ADMIN', 'AUTHOR', 'READER']),
+  enabled:     boolean(),
+  rating:      float().nullable(),                             // float
+  metadata:    json().nullable(),                              // json
+  lastLoginAt: timestamp().column('last_login_at').nullable(),
+  profile:     oneToOne(() => profile),
+  posts:       oneToMany(() => post),
+  comments:    oneToMany(() => comment),
+})
+
+const profile = entity('profile', 'profiles', {
+  id:      uuid().primaryKey(),
+  user:    manyToOne(() => user, { column: 'user_id' }),
+  bio:     text(),
+  website: text().nullable(),
+})
+
+const category = entity('category', 'categories', {
+  id:   uuid().primaryKey(),
+  name: text(),
+  slug: text(),
+})
+
+const tag = entity('tag', 'tags', {
+  id:    uuid().primaryKey(),
+  name:  text(),
+  posts: manyToMany(() => post, { junction: 'post_tags' }),
+})
+
+const post = entity('post', 'posts', {
+  id:            uuid().primaryKey(),
+  title:         text(),
+  slug:          text(),
+  body:          text(),
+  status:        enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
+  featured:      boolean(),
+  viewCount:     integer().column('view_count'),
+  wordCount:     bigint().column('word_count'),               // bigint
+  readingTime:   decimal(4, 2).column('reading_time').nullable(), // decimal
+  createdAt:     timestamp().column('created_at'),
+  publishedAt:   timestamp().column('published_at').nullable(),
+  publishedOn:   date().column('published_on').nullable(),    // date
+  publishTime:   time().column('publish_time').nullable(),    // time
+  editWindow:    interval().nullable(),                       // interval
+  keywords:      textArray(),                                 // text[]
+  visitHistogram: integerArray().column('visit_histogram'),   // integer[]
+  metadata:      json().nullable(),
+  author:        manyToOne(() => user, { column: 'author_id' }),
+  reviewedBy:    manyToOne(() => user, { column: 'reviewed_by_id' }).nullable(),
+  category:      manyToOne(() => category, { column: 'category_id' }).nullable(),
+  comments:      oneToMany(() => comment),
+  tags:          manyToMany(() => tag, { junction: 'post_tags' }),
+})
+
+const comment = entity('comment', 'comments', {
+  id:        uuid().primaryKey(),
+  body:      text(),
+  createdAt: timestamp().column('created_at'),
+  post:      manyToOne(() => post, { column: 'post_id' }),
+  author:    manyToOne(() => user, { column: 'author_id' }),
+  parent:    manyToOne(() => comment, { column: 'parent_id' }).nullable(),  // self-ref
+})
+```
+
+What's exercised here:
+
+- **All scalar column types**: uuid, text, integer, bigint, float, decimal, boolean, timestamp, date, time, interval, json, textArray, integerArray.
+- **Enum columns** (`UserRole`, `PostStatus`) with compile-time-checked values.
+- **All modifiers**: `.primaryKey()`, `.nullable()`, `.column()`.
+- **Every relation kind**: `manyToOne`, `oneToMany`, `manyToMany`, `oneToOne`.
+- **Two `manyToOne`s to the same target** (`post.author` and `post.reviewedBy`).
+- **Self-referencing `manyToOne`** (`comment.parent`).
+- **Circular entity references** (`user` ↔ `post`, `post` ↔ `comment`, etc.) resolved via the `() => target` thunks.

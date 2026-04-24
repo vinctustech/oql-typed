@@ -1,35 +1,18 @@
 {
-  "name": "@vinctus/oql-typed",
-  "version": "0.1.0-alpha.17",
-  "description": "Compile-time typed queries for OQL",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
+  "name": "oql-typed-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Monorepo for @vinctus/oql-typed and its documentation site",
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --project tsconfig.typecheck.json",
-    "test:runtime": "node --import tsx --test src/*.test.ts",
-    "test": "npm run typecheck && npm run test:runtime",
-    "lint": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "build": "pnpm --filter @vinctus/oql-typed build",
+    "test": "pnpm --filter @vinctus/oql-typed test",
+    "lint": "pnpm --filter @vinctus/oql-typed lint",
+    "docs:dev": "pnpm --filter oql-typed-docs dev",
+    "docs:build": "pnpm --filter oql-typed-docs build",
+    "docs:preview": "pnpm --filter oql-typed-docs preview"
   },
-  "bin": {
-    "oql-typed-codegen": "dist/cli.js"
-  },
-  "devDependencies": {
-    "@types/node": "^25.6.0",
-    "@vinctus/oql-petradb": "file:../oql-SC-1432/petradb/npm",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
-  },
-  "keywords": [
-    "oql",
-    "typescript",
-    "typed",
-    "query"
-  ],
-  "license": "ISC"
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20"
+  }
 }

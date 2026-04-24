@@ -1,0 +1,35 @@
+---
+title: '@vinctus/oql-typed'
+description: Compile-time typed queries for OQL
+template: splash
+hero:
+  tagline: Compile-time typed queries for OQL. Define your data model in TypeScript and get fully inferred result types — no manual type parameters needed.
+  actions:
+    - text: Get started
+      link: /oql-typed/quick-start/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/vinctustech/oql-typed
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components'
+
+## Why oql-typed
+
+<CardGrid>
+  <Card title="Typed projections" icon="approve-check">
+    `.select('id', { account: ['id', 'name'] })` produces a precisely typed result — no manual type parameter, no casts.
+  </Card>
+  <Card title="Typed filters" icon="approve-check">
+    `eq`, `ilike`, `inList`, `exists`, etc. validate field types at compile time. `eq(user.enabled, 'yes')` is a type error.
+  </Card>
+  <Card title="Schema as source of truth" icon="document">
+    Declare entities once. Derive TypeScript types, generate the OQL `.dm` data model, and share the schema across queries and mutations.
+  </Card>
+  <Card title="Backend-agnostic" icon="setting">
+    Works with `@vinctus/oql-pg` (PostgreSQL) and `@vinctus/oql-petradb` (in-memory). Peer dependency — no hard-coded backend.
+  </Card>
+</CardGrid>

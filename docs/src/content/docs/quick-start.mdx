@@ -1,0 +1,128 @@
+---
+title: Quick start
+description: Define a schema, wire up OQL, run a typed query.
+---
+
+import { Steps, Tabs, TabItem, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
+
+In five minutes you'll have a typed schema, a working OQL instance, and your first compile-time checked query.
+
+<Steps>
+
+1. **Install the library and a backend.**
+
+   ```bash
+   npm install @vinctus/oql-typed @vinctus/oql-pg
+   ```
+
+2. **Define your schema in TypeScript.**
+
+   The examples throughout these docs use a small blog domain: `user`, `post`, `category`, `tag`, `comment`.
+
+   ```typescript
+   // schema.ts
+   import {
+     entity, uuid, text, integer, boolean, timestamp,
+     manyToOne, oneToMany, manyToMany, enumType,
+   } from '@vinctus/oql-typed'
+
+   type UserRole = 'ADMIN' | 'AUTHOR' | 'READER'
+
+   export const user = entity('user', 'users', {
+     id:          uuid().primaryKey(),
+     email:       text(),
+     firstName:   text().column('first_name'),
+     lastName:    text().column('last_name'),
+     role:        enumType<UserRole>('UserRole', ['ADMIN', 'AUTHOR', 'READER']),
+     enabled:     boolean(),
+     lastLoginAt: timestamp().column('last_login_at').nullable(),
+     posts:       oneToMany(() => post),
+   })
+
+   type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
+   export const post = entity('post', 'posts', {
+     id:        uuid().primaryKey(),
+     title:     text(),
+     slug:      text(),
+     status:    enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
+     viewCount: integer().column('view_count'),
+     createdAt: timestamp().column('created_at'),
+     author:    manyToOne(() => user, { column: 'author_id' }),
+   })
+   ```
+
+3. **Generate the `.dm` string and instantiate OQL.**
+
+   ```typescript
+   // db.ts
+   import { generateDM, typedOQL } from '@vinctus/oql-typed'
+   import { OQL_PG } from '@vinctus/oql-pg'
+   import { user, post } from './schema.js'
+
+   const dm = generateDM(user, post)
+   const oqlInstance = new OQL_PG(dm, host, port, database, username, password)
+
+   export const db = typedOQL(oqlInstance, { user, post })
+   ```
+
+4. **Write typed queries.**
+
+   ```typescript
+   import { query, eq } from '@vinctus/oql-typed'
+   import { db } from './db.js'
+
+   const u = await query(db, 'user')
+     .select('id', 'firstName', { posts: ['id', 'title'] })
+     .where(eq(db.user.id, userId))
+     .one()
+   // u is typed as:
+   //   { id: string, firstName: string, posts: { id: string, title: string }[] } | undefined
+   ```
+
+5. **Let the compiler catch mistakes.**
+
+   <Tabs>
+     <TabItem label="✗ Typo in a field">
+       ```typescript
+       query(db, 'user').select('id', 'fistName')
+       //                              ^^^^^^^^
+       // Type error: Argument not assignable to keyof user fields
+       ```
+     </TabItem>
+     <TabItem label="✗ Wrong value type">
+       ```typescript
+       eq(db.user.enabled, 'yes')
+       //                  ^^^^^
+       // Type error: string not assignable to boolean
+       ```
+     </TabItem>
+     <TabItem label="✗ Invalid enum">
+       ```typescript
+       eq(db.user.role, 'SUPERADMIN')
+       //               ^^^^^^^^^^^^
+       // Type error: not assignable to 'ADMIN' | 'AUTHOR' | 'READER'
+       ```
+     </TabItem>
+     <TabItem label="✗ Unselected field">
+       ```typescript
+       const u = await query(db, 'user').select('id').one()
+       u?.firstName
+       //  ^^^^^^^^^
+       // Type error: 'firstName' not in projection
+       ```
+     </TabItem>
+   </Tabs>
+
+</Steps>
+
+<Aside type="tip" title="What's next?">
+Jump into the guides to learn schema design, all operators and expressions, and common patterns.
+</Aside>
+
+<CardGrid>
+  <LinkCard title="Schema" href="/oql-typed/guides/schema/" description="Entities, columns, relations, and the .dm data model." />
+  <LinkCard title="Queries" href="/oql-typed/guides/queries/" description="Projections, filters, nested relations, and ordering." />
+  <LinkCard title="Operators" href="/oql-typed/guides/operators/" description="Every filter operator with examples." />
+  <LinkCard title="Recipes" href="/oql-typed/recipes/" description="Common query patterns." />
+</CardGrid>
