@@ -69,13 +69,12 @@ In five minutes you'll have a typed schema, a working OQL instance, and your fir
 4. **Write typed queries.**
 
    ```typescript
-   import { query, eq } from '@vinctus/oql-typed'
    import { db } from './db.js'
 
-   const u = await query(db, 'user')
+   // PK lookup with .findById — auto-terminates with .one()
+   const u = await db.user
      .select('id', 'firstName', { posts: ['id', 'title'] })
-     .where(eq(db.user.id, userId))
-     .one()
+     .findById(userId)
    // u is typed as:
    //   { id: string, firstName: string, posts: { id: string, title: string }[] } | undefined
    ```

@@ -18,7 +18,7 @@ Requires one of the OQL backends as a peer dependency:
 ## Quick taste
 
 ```typescript
-import { entity, uuid, text, boolean, typedOQL, query, eq } from '@vinctus/oql-typed'
+import { entity, uuid, text, boolean, typedOQL } from '@vinctus/oql-typed'
 
 const user = entity('user', 'users', {
   id:      uuid().primaryKey(),
@@ -28,11 +28,11 @@ const user = entity('user', 'users', {
 
 const db = typedOQL(oql, { user })
 
-const active = await query(db, 'user')
-  .select('id', 'email')
-  .where(eq(db.user.enabled, true))
-  .many()
+const active = await db.user.select('id', 'email').findBy(db.user.enabled, true).many()
 // => { id: string, email: string }[]
+
+const one = await db.user.findById(userId)
+// => { id, email, enabled } | undefined
 ```
 
 See the [docs](https://vinctustech.github.io/oql-typed/) for the full guide — schema, queries, operators, expressions, mutations, and the conditional QueryBuilder.
