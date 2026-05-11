@@ -46,6 +46,10 @@ All operators take a typed field reference (obtained from `db.entity.field`) and
 Comparison operators use `NoInfer<T>` to pin the value type to the field's type. `eq(db.user.role, 'SUPERADMIN')` is a compile error if `'SUPERADMIN'` is not in the role enum.
 </Aside>
 
+<Aside type="tip">
+For the two most common uses of `eq` and `inList` — single-column lookups inside a `where` — see the [`.findBy()` / `.findIn()` / `.findById()` shortcuts](/oql-typed/guides/queries/#lookup-shortcuts), which drop the `.where(eq(...))` wrapping.
+</Aside>
+
 ## Logical
 
 ```typescript
