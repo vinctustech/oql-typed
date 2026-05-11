@@ -7,7 +7,7 @@
     "build": "pnpm --filter @vinctus/oql-typed build",
     "test": "pnpm --filter @vinctus/oql-typed test",
     "lint": "pnpm --filter @vinctus/oql-typed lint",
-    "publish:lib": "pnpm --filter @vinctus/oql-typed publish",
+    "publish": "pnpm --filter @vinctus/oql-typed publish",
     "docs:dev": "pnpm --filter oql-typed-docs dev",
     "docs:build": "pnpm --filter oql-typed-docs build",
     "docs:preview": "pnpm --filter oql-typed-docs preview"
