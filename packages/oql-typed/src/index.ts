@@ -42,6 +42,7 @@ export type {
   InferAllScalars,
   InferDefaultProjection,
   InferColumnType,
+  PKType,
   ProjectionArg,
   FilteredRelationSpec,
   Prettify,

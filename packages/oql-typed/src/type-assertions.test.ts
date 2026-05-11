@@ -446,6 +446,177 @@ describe('type: filter operator negatives', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// findBy — sugar for .where(eq(...))
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: findBy', () => {
+  it('placeholder', () => assert.ok(true))
+
+  // --- findBy on scalar ---
+  async function _findByScalar() {
+    await query(db, 'user').findBy(db.user.enabled, true).many()
+  }
+
+  // --- findBy on enum ---
+  async function _findByEnum() {
+    await query(db, 'trip').findBy(db.trip.state, 'CONFIRMED').many()
+  }
+
+  // --- findBy on manyToOne FK (auto-resolves to .id) ---
+  async function _findByFK() {
+    await query(db, 'trip').findBy(db.trip.store, ID.s1).many()
+  }
+
+  // --- findBy on dotted path ---
+  async function _findByDotted() {
+    await query(db, 'trip').findBy(db.trip.store.account.id, ID.a1).many()
+  }
+
+  // --- starter findBy + terminator ---
+  async function _starterFindBy() {
+    const r = await db.user.findBy(db.user.id, ID.u1).one()
+    void r
+  }
+
+  // --- starter findBy after select(): result is narrow projection ---
+  async function _starterFindByWithSelect() {
+    const r = await db.user.select('id', 'firstName').findBy(db.user.id, ID.u1).one()
+    // r is { id; firstName } | undefined — accessing firstName must compile
+    void r?.firstName
+  }
+
+  // --- chained findBy returns the builder (chainable) ---
+  async function _findByChainable() {
+    await query(db, 'user').findBy(db.user.enabled, true).findBy(db.user.role, 'DRIVER').many()
+  }
+
+  // --- findBy on queryBuilder() (CondQueryBuilder) ---
+  async function _condFindBy() {
+    await queryBuilder(db, 'user').select('id').findBy(db.user.enabled, true).many()
+  }
+})
+
+describe('type: findBy negatives', () => {
+  it('placeholder', () => assert.ok(true))
+
+  async function _wrongValueType() {
+    // @ts-expect-error — enabled is boolean, not string
+    query(db, 'user').findBy(db.user.enabled, 'yes')
+  }
+
+  async function _wrongEnumValue() {
+    // @ts-expect-error — 'SUPERADMIN' isn't in Role union
+    query(db, 'user').findBy(db.user.role, 'SUPERADMIN')
+  }
+
+  async function _wrongFKValueType() {
+    // @ts-expect-error — FK accepts string|number, not boolean
+    query(db, 'trip').findBy(db.trip.store, true)
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// findIn — sugar for .where(inList(...))
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: findIn', () => {
+  it('placeholder', () => assert.ok(true))
+
+  async function _findInEnum() {
+    await query(db, 'trip').findIn(db.trip.state, ['CONFIRMED', 'REQUESTED']).many()
+  }
+
+  async function _findInFK() {
+    await query(db, 'trip').findIn(db.trip.store, [ID.s1]).many()
+  }
+
+  async function _findInChainable() {
+    await query(db, 'trip').findBy(db.trip.store, ID.s1).findIn(db.trip.state, ['CONFIRMED']).many()
+  }
+
+  async function _starterFindIn() {
+    const r = await db.user.select('id').findIn(db.user.id, [ID.u1, ID.u2]).many()
+    void r
+  }
+
+  async function _condFindIn() {
+    await queryBuilder(db, 'trip').select('id').findIn(db.trip.state, ['CONFIRMED']).many()
+  }
+})
+
+describe('type: findIn negatives', () => {
+  it('placeholder', () => assert.ok(true))
+
+  async function _wrongValueType() {
+    // @ts-expect-error — enabled is boolean, not string
+    query(db, 'user').findIn(db.user.enabled, ['yes', 'no'])
+  }
+
+  async function _wrongEnumValue() {
+    // @ts-expect-error — 'SUPERADMIN' isn't in Role union
+    query(db, 'user').findIn(db.user.role, ['SUPERADMIN'])
+  }
+
+  async function _bareValueNotArray() {
+    // @ts-expect-error — findIn requires an array
+    query(db, 'trip').findIn(db.trip.state, 'CONFIRMED')
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// findById — PK lookup sugar, auto-terminates
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: findById', () => {
+  it('placeholder', () => assert.ok(true))
+
+  // --- starter findById returns Promise<DefaultProjection | undefined> ---
+  async function _starterFindById() {
+    const r = await db.user.findById(ID.u1)
+    // r is DefaultProjection<'user'> | undefined
+    void r?.firstName
+    void r?.email
+  }
+
+  // --- findById after select() narrows the result shape ---
+  async function _findByIdNarrowed() {
+    const r = await db.user.select('id', 'firstName').findById(ID.u1)
+    void r?.firstName
+  }
+
+  // --- query() entry point form ---
+  async function _queryFindById() {
+    const r = await query(db, 'trip').findById(ID.t1)
+    void r?.state
+  }
+
+  // --- findById accepts the PK type (string for uuid) ---
+  async function _findByIdString() {
+    await query(db, 'user').findById('any-string-uuid')
+  }
+})
+
+describe('type: findById negatives', () => {
+  it('placeholder', () => assert.ok(true))
+
+  async function _wrongIdType() {
+    // @ts-expect-error — id is string (uuid), not number
+    await query(db, 'user').findById(42)
+  }
+
+  async function _wrongIdTypeViaStarter() {
+    // @ts-expect-error — id is string (uuid), not boolean
+    await db.user.findById(true)
+  }
+
+  async function _narrowedShapeBlocksOtherFields() {
+    const r = await db.user.select('id').findById(ID.u1)
+    // @ts-expect-error — firstName is not in the projected shape
+    void r?.firstName
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
 // ORDERING / PAGINATION
 // ═══════════════════════════════════════════════════════════════════
 
