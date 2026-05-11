@@ -15,7 +15,7 @@ import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
 import { fn, raw, ref, alias, aliasedRelation } from './expressions.js'
-import { sum, avg, min, max } from './functions.js'
+import { sum, avg, min, max, concatOp } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
 
@@ -411,6 +411,19 @@ describe('runtime: filters', () => {
   it('concat() ILIKE for search', async () => {
     const r = await query(db, 'customer')
       .where(ilike(fn<string>('concat', db.customer.firstName, raw("' '"), db.customer.lastName), '%Dan%'))
+      .many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].firstName, 'Dan')
+  })
+
+  it('concatOp() emits || operator chain for indexable search', async () => {
+    const { queryStr, params } = query(db, 'customer')
+      .where(ilike(concatOp(db.customer.firstName, ' ', db.customer.lastName), '%Dan%'))
+      .toOQL()
+    assert.match(queryStr, /firstName \|\| .* \|\| lastName/)
+    assert.ok(Object.values(params).includes(' '))
+    const r = await query(db, 'customer')
+      .where(ilike(concatOp(db.customer.firstName, ' ', db.customer.lastName), '%Dan%'))
       .many()
     assert.equal(r.length, 1)
     assert.equal(r[0].firstName, 'Dan')

@@ -94,7 +94,7 @@ export { fn, raw, ref, subquery, alias, aliasedRelation } from './expressions.js
 export type { OQLExpr, AliasedRelationSpec } from './expressions.js'
 
 // Typed function wrappers
-export { lower, upper, trim, length, concat, coalesce, count, sum, avg, min, max } from './functions.js'
+export { lower, upper, trim, length, concat, concatOp, coalesce, count, sum, avg, min, max } from './functions.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Mutations
