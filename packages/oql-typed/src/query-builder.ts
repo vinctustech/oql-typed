@@ -1,5 +1,5 @@
-import type { Schema, InferProjection, ProjectionArg } from './types.js'
-import { FilterContext, and, type FilterExpr, type FilterArg, type OrderExpr } from './operators.js'
+import type { Schema, InferProjection, ProjectionArg, FieldRef, RelationFieldRef } from './types.js'
+import { FilterContext, and, eq, inList, type FilterExpr, type FilterArg, type OrderExpr } from './operators.js'
 import type { DB, OQLInstance } from './db.js'
 
 // Shared with query.ts but kept separate here to avoid circular imports.
@@ -75,6 +75,20 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
 
   where(filter: FilterArg): this {
     this.filters.push(and(filter))
+    return this
+  }
+
+  findBy<T>(field: FieldRef<T>, value: NoInfer<T>): this
+  findBy(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): this
+  findBy(field: any, value: any): this {
+    this.filters.push(eq(field, value))
+    return this
+  }
+
+  findIn<T>(field: FieldRef<T>, values: NoInfer<T>[]): this
+  findIn(field: RelationFieldRef<Schema, any, 'manyToOne'>, values: Array<string | number>): this
+  findIn(field: any, values: any[]): this {
+    this.filters.push(inList(field, values))
     return this
   }
 

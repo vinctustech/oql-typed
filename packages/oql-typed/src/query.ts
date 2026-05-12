@@ -4,8 +4,12 @@ import type {
   InferDefaultProjection,
   ProjectionArg,
   OQLProjectionArg,
+  FieldRef,
+  RelationFieldRef,
+  PKType,
 } from './types.js'
-import { FilterContext, and, type FilterExpr, type FilterArg, type OrderExpr } from './operators.js'
+import { FilterContext, and, eq, inList, type FilterExpr, type FilterArg, type OrderExpr } from './operators.js'
+import { Column, type EntityMeta } from './schema.js'
 import { getTableName, registerStarterFactory, type DB, type EntityHandle, type OQLInstance } from './db.js'
 
 // ══════════════════════════════════════════════════════════════════════
@@ -48,6 +52,19 @@ function buildProjection(args: readonly any[], ctx: FilterContext): string {
   return parts.join(' ')
 }
 
+function findPrimaryKeyColumn(schema: Schema, entityName: PropertyKey): string {
+  const entry = schema[entityName as string] as EntityMeta | Record<string, any> | undefined
+  if (!entry) throw new Error(`Entity '${String(entityName)}' not found in schema`)
+  const def =
+    typeof entry === 'object' && '__meta' in entry && (entry as any).__meta === true
+      ? (entry as EntityMeta).definition
+      : (entry as Record<string, any>)
+  for (const [name, field] of Object.entries(def)) {
+    if (field instanceof Column && field.isPrimaryKey) return name
+  }
+  throw new Error(`Entity '${String(entityName)}' has no primary-key column`)
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // QueryBuilder — chainable, infers Result type from projection args
 // ══════════════════════════════════════════════════════════════════════
@@ -78,6 +95,32 @@ class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
     // Use and() to normalize a bare FieldRef<boolean> or a full FilterExpr
     this.filterExpr = and(filter)
     return this
+  }
+
+  findBy<T>(field: FieldRef<T>, value: NoInfer<T>): this
+  findBy(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): this
+  findBy(field: any, value: any): this {
+    const expr = eq(field, value)
+    this.filterExpr = this.filterExpr ? and(this.filterExpr, expr) : and(expr)
+    return this
+  }
+
+  findIn<T>(field: FieldRef<T>, values: NoInfer<T>[]): this
+  findIn(field: RelationFieldRef<Schema, any, 'manyToOne'>, values: Array<string | number>): this
+  findIn(field: any, values: any[]): this {
+    const expr = inList(field, values)
+    this.filterExpr = this.filterExpr ? and(this.filterExpr, expr) : and(expr)
+    return this
+  }
+
+  findById(id: PKType<S, Name>): Promise<Result | undefined> {
+    const pkName = findPrimaryKeyColumn(this.schema, this.entityName)
+    const expr: FilterExpr = {
+      __filterExpr: true,
+      toOQL: (ctx) => `${pkName} = ${ctx.addParam(id)}`,
+    }
+    this.filterExpr = this.filterExpr ? and(this.filterExpr, expr) : and(expr)
+    return this.one()
   }
 
   orderBy(...orders: OrderExpr[]): this {
@@ -148,6 +191,11 @@ export interface QueryStarter<S extends Schema, Name extends keyof S> {
   ): QueryBuilder<S, Name, InferProjection<S, Name, Args>>
 
   where(filter: FilterArg): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  findBy<T>(field: FieldRef<T>, value: NoInfer<T>): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  findBy(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  findIn<T>(field: FieldRef<T>, values: NoInfer<T>[]): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  findIn(field: RelationFieldRef<Schema, any, 'manyToOne'>, values: Array<string | number>): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
+  findById(id: PKType<S, Name>): Promise<InferDefaultProjection<S, Name> | undefined>
   orderBy(...orders: OrderExpr[]): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   limit(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   offset(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
@@ -170,6 +218,15 @@ function createStarter<S extends Schema, Name extends keyof S>(
     },
     where(filter) {
       return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).where(filter)
+    },
+    findBy(field: any, value: any) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).findBy(field, value)
+    },
+    findIn(field: any, values: any[]) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).findIn(field, values)
+    },
+    findById(id: any) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).findById(id)
     },
     orderBy(...orders) {
       return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).orderBy(...orders)

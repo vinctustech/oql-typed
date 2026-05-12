@@ -10,13 +10,16 @@ Returns a `QueryStarter<S, Name>`.
 ```typescript
 query(db, 'user')
   .select(...)         // optional — fields and relations
-  .where(filter)       // optional — single filter expression
+  .where(filter)       // optional — single filter expression (overwrites)
+  .findBy(col, v)      // optional — sugar for where(eq(col, v)); chains AND
+  .findIn(col, vs)     // optional — sugar for where(inList(col, vs)); chains AND
   .orderBy(...)        // optional — sort
   .limit(n)            // optional
   .offset(n)           // optional
   .one()               // → T | undefined
   .many()              // → T[]
   .count()             // → number
+  .findById(id)        // → T | undefined  (terminal — auto-runs .one())
   .toOQL()             // → { queryStr, params } — no execution
 ```
 
@@ -43,7 +46,36 @@ If `.select()` is not called, the result includes all scalar fields (`InferDefau
 
 ### `.where(filter)`
 
-Accepts either a `FilterExpr` or a bare `FieldRef<boolean>` (short for `eq(field, true)`).
+Accepts either a `FilterExpr` or a bare `FieldRef<boolean>` (short for `eq(field, true)`). On `QueryBuilder`, repeated `.where()` calls **overwrite** the previous filter — use `.findBy()` / `.findIn()` to AND, or build a single `and(...)` expression.
+
+### `.findBy(field, value)`
+
+Sugar for `.where(eq(field, value))`. Chainable: repeated calls AND together. Same overloads as `eq` — accepts a scalar `FieldRef<T>` (typed value) or a `manyToOne` `RelationFieldRef` (FK lookup).
+
+```typescript
+db.user.findBy(db.user.email, 'a@b.com').one()
+db.post.findBy(db.post.status, 'PUBLISHED').findBy(db.post.author, authorId).many()
+```
+
+### `.findIn(field, values)`
+
+Sugar for `.where(inList(field, values))`. Chainable: repeated calls AND together.
+
+```typescript
+db.post.findIn(db.post.status, ['PUBLISHED', 'DRAFT']).many()
+db.trip.findBy(db.trip.store, storeId).findIn(db.trip.state, ['CONFIRMED']).many()
+```
+
+### `.findById(id)` — terminal
+
+Sugar for `.where(eq(<entity>.id, id)).one()`. **Terminates the chain** — returns `Promise<T | undefined>`. The PK column is auto-detected from the schema; the `id` argument is typed via `PKType<S, Name>`.
+
+```typescript
+const u = await db.user.findById(userId)
+const stub = await db.user.select('id', 'firstName').findById(userId)
+```
+
+Not available on `CondQueryBuilder` (use `findBy` + `.one()` if you need to combine with `.cond()`).
 
 ## `queryBuilder(db, entityName)`
 
@@ -60,6 +92,8 @@ queryBuilder(db, 'user')
   .cond(role, eq(db.user.role, role))
   .cond(search, ilike(db.user.firstName, `%${search}%`))
 ```
+
+`queryBuilder` also supports `.findBy()` and `.findIn()` — both append to the filter list (no overwrite semantics). `.findById()` is not available here.
 
 ## Mutations
 

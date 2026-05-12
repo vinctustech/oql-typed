@@ -54,6 +54,26 @@ Most list endpoints have a shape like: always filter by `enabled = true`, and op
 
 Falsy values skip the filter entirely — no empty `WHERE` clause, no wasted parameter slots.
 
+## Mixing with `.findBy()` / `.findIn()`
+
+`queryBuilder` exposes the same `.findBy(col, v)` and `.findIn(col, vs)` shortcuts as `query()`, and they compose naturally with `.where()` / `.cond()` — all filter contributions are ANDed together in the order they were added.
+
+```typescript
+queryBuilder(db, 'post')
+  .select('id', 'title')
+  .findBy(db.post.status, 'PUBLISHED')          // mandatory eq
+  .cond(authorId, eq(db.post.author, authorId)) // optional eq
+  .findIn(db.post.tag, ['typescript', 'oql'])   // mandatory IN
+  .many()
+```
+
+```oql
+post {id title}
+  [status = :p0 AND author.id = :p1 AND tag.id IN :p2]
+```
+
+`.findById()` is **not** available on `queryBuilder` — it auto-terminates with `.one()`, which conflicts with the conditional-builder shape. Use `.findBy(db.entity.id, id).one()` if you need that.
+
 ## List + total count
 
 For paginated endpoints that return both a page of rows and a total count, build the query once and run two terminals:
