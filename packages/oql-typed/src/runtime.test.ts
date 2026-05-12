@@ -454,6 +454,47 @@ describe('runtime: ordering + pagination', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// SC-1487 — count() must ignore offset/limit set on the same builder.
+// The mutable builder previously leaked pagination into count's OQL,
+// which made the backend throw on page-past-end.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: count() ignores pagination (SC-1487)', () => {
+  it('QueryBuilder: toOQL() includes |limit, offset| but toOQL({ paginate: false }) drops it', () => {
+    const qb = query(db, 'user').select('id', 'firstName').orderBy(asc(db.user.firstName)).limit(10).offset(10)
+    const many = qb.toOQL()
+    const cnt = qb.toOQL({ paginate: false })
+    assert.match(many.queryStr, /\|10, 10\|/)
+    assert.doesNotMatch(cnt.queryStr, /\|[^|]*\|/)
+  })
+
+  it('CondQueryBuilder: toOQL() includes |limit, offset| but toOQL({ paginate: false }) drops it', () => {
+    const qb = queryBuilder(db, 'user').select('id', 'firstName').orderBy(asc(db.user.firstName)).limit(10).offset(10)
+    const many = qb.toOQL()
+    const cnt = qb.toOQL({ paginate: false })
+    assert.match(many.queryStr, /\|10, 10\|/)
+    assert.doesNotMatch(cnt.queryStr, /\|[^|]*\|/)
+  })
+
+  it('QueryBuilder: count() returns total when paging past the end', async () => {
+    // Seed has 4 trips; offset=100 past end would previously throw "count: zero rows were found".
+    const qb = query(db, 'trip').orderBy(asc(db.trip.createdAt)).limit(10).offset(100)
+    const rows = await qb.many()
+    assert.equal(rows.length, 0)
+    const total = await qb.count()
+    assert.equal(total, 4)
+  })
+
+  it('CondQueryBuilder: count() returns total when paging past the end', async () => {
+    const qb = queryBuilder(db, 'trip').select('id').orderBy(asc(db.trip.createdAt)).limit(10).offset(100)
+    const rows = await qb.many()
+    assert.equal(rows.length, 0)
+    const total = await qb.count()
+    assert.equal(total, 4)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
 // TYPED AGGREGATES
 // ═══════════════════════════════════════════════════════════════════
 

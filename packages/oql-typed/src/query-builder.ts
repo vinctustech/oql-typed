@@ -107,7 +107,8 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
     return this
   }
 
-  private build(): { queryStr: string; params: Record<string, unknown> } {
+  private build(opts?: { paginate?: boolean }): { queryStr: string; params: Record<string, unknown> } {
+    const paginate = opts?.paginate !== false
     const ctx = new FilterContext()
     let q = String(this.entityName)
     q += ` {${buildProjection(this.projectionArgs, ctx)}}`
@@ -118,7 +119,7 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
     if (this.orderExprs.length > 0) {
       q += ` <${this.orderExprs.map((o) => o.toOQL()).join(', ')}>`
     }
-    if (this.offsetVal !== undefined || this.limitVal !== undefined) {
+    if (paginate && (this.offsetVal !== undefined || this.limitVal !== undefined)) {
       const limit = this.limitVal ?? ''
       const offset = this.offsetVal ?? ''
       q += ` |${limit}${offset !== '' ? `, ${offset}` : ''}|`
@@ -126,8 +127,8 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
     return { queryStr: q, params: ctx.getParams() }
   }
 
-  toOQL(): { queryStr: string; params: Record<string, unknown> } {
-    return this.build()
+  toOQL(opts?: { paginate?: boolean }): { queryStr: string; params: Record<string, unknown> } {
+    return this.build(opts)
   }
 
   async one(): Promise<Result | undefined> {
@@ -141,7 +142,7 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
   }
 
   async count(): Promise<number> {
-    const { queryStr, params } = this.build()
+    const { queryStr, params } = this.build({ paginate: false })
     return this.oql.count(queryStr, params)
   }
 }

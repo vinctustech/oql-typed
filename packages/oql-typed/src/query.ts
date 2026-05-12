@@ -138,7 +138,8 @@ class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
     return this
   }
 
-  private build(): { queryStr: string; params: Record<string, unknown> } {
+  private build(opts?: { paginate?: boolean }): { queryStr: string; params: Record<string, unknown> } {
+    const paginate = opts?.paginate !== false
     const ctx = new FilterContext()
     // OQL query uses the entity name (which is what OQL knows); tableName is only relevant for DDL
     void getTableName
@@ -153,7 +154,7 @@ class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
     if (this.orderExprs.length > 0) {
       q += ` <${this.orderExprs.map((o) => o.toOQL()).join(', ')}>`
     }
-    if (this.offsetVal !== undefined || this.limitVal !== undefined) {
+    if (paginate && (this.offsetVal !== undefined || this.limitVal !== undefined)) {
       const limit = this.limitVal ?? ''
       const offset = this.offsetVal ?? ''
       q += ` |${limit}${offset !== '' ? `, ${offset}` : ''}|`
@@ -161,8 +162,8 @@ class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
     return { queryStr: q, params: ctx.getParams() }
   }
 
-  toOQL(): { queryStr: string; params: Record<string, unknown> } {
-    return this.build()
+  toOQL(opts?: { paginate?: boolean }): { queryStr: string; params: Record<string, unknown> } {
+    return this.build(opts)
   }
 
   async one(): Promise<Result | undefined> {
@@ -176,7 +177,7 @@ class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
   }
 
   async count(): Promise<number> {
-    const { queryStr, params } = this.build()
+    const { queryStr, params } = this.build({ paginate: false })
     return this.oql.count(queryStr, params)
   }
 }
@@ -202,7 +203,7 @@ export interface QueryStarter<S extends Schema, Name extends keyof S> {
   one(): Promise<InferDefaultProjection<S, Name> | undefined>
   many(): Promise<InferDefaultProjection<S, Name>[]>
   count(): Promise<number>
-  toOQL(): { queryStr: string; params: Record<string, unknown> }
+  toOQL(opts?: { paginate?: boolean }): { queryStr: string; params: Record<string, unknown> }
 }
 
 function createStarter<S extends Schema, Name extends keyof S>(
@@ -246,8 +247,8 @@ function createStarter<S extends Schema, Name extends keyof S>(
     count() {
       return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).count()
     },
-    toOQL() {
-      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).toOQL()
+    toOQL(opts?: { paginate?: boolean }) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).toOQL(opts)
     },
   }
 }
