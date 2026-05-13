@@ -495,6 +495,58 @@ describe('runtime: count() ignores pagination (SC-1487)', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// .select() — undefined args are silently dropped (SC-1483)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: .select() drops undefined args (SC-1483)', () => {
+  it('QueryBuilder: undefined args do not appear in OQL string', () => {
+    const include = false as boolean
+    const { queryStr } = query(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .toOQL()
+    assert.match(queryStr, /\{id email\}/)
+    assert.doesNotMatch(queryStr, /undefined/)
+  })
+
+  it('CondQueryBuilder: undefined args do not appear in OQL string', () => {
+    const include = false as boolean
+    const { queryStr } = queryBuilder(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .toOQL()
+    assert.match(queryStr, /\{id email\}/)
+    assert.doesNotMatch(queryStr, /undefined/)
+  })
+
+  it('QueryBuilder: undefined-only between real fields renders cleanly with single spaces', () => {
+    const { queryStr } = query(db, 'user').select('id', undefined, undefined, 'email').toOQL()
+    assert.match(queryStr, /\{id email\}/)
+  })
+
+  it('QueryBuilder: conditional inclusion at runtime — true branch keeps field', async () => {
+    const include = true as boolean
+    const r = await query(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.email, 'alice@example.com')
+  })
+
+  it('QueryBuilder: conditional inclusion at runtime — false branch omits field', async () => {
+    const include = false as boolean
+    const r = await query(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.email, 'alice@example.com')
+    assert.equal((r as Record<string, unknown>).firstName, undefined)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
 // TYPED AGGREGATES
 // ═══════════════════════════════════════════════════════════════════
 

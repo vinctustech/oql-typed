@@ -141,10 +141,12 @@ export interface OQLProjectionArg {
 //  - a scalar field name (string)
 //  - an object { relationName: RelationSpec }
 //  - an OQL expression
+//  - undefined (silently dropped — enables `cond ? 'field' : undefined` patterns)
 export type ProjectionArg<S extends Schema, Name extends keyof S> =
   | ScalarKeys<Unwrap<S[Name]>>
   | RelationSpec<S, Name>
   | OQLProjectionArg
+  | undefined
 
 // Filter/order on sub-collections. `where` accepts a full FilterExpr OR a bare
 // FieldRef<boolean> (short for `eq(field, true)`), matching the top-level .where().

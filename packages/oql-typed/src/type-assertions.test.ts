@@ -750,3 +750,37 @@ describe('type: queryBuilder', () => {
     type _ = AssertTrue<AssertEqual<(typeof r)[number], { id: string; firstName: string }>>
   }
 })
+
+// ═══════════════════════════════════════════════════════════════════
+// .select() — undefined args drop out of the result type (SC-1483)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: undefined select args do not pollute result type', () => {
+  it('placeholder', () => assert.ok(true))
+
+  // QueryBuilder: undefined args produce the same result type as omitting them.
+  async function _qbUndefined() {
+    const withUndef = await query(db, 'user').select('id', undefined, 'email').one()
+    const withoutUndef = await query(db, 'user').select('id', 'email').one()
+    type _ = AssertTrue<AssertEqual<typeof withUndef, typeof withoutUndef>>
+  }
+
+  // CondQueryBuilder: same property.
+  async function _cqbUndefined() {
+    const withUndef = await queryBuilder(db, 'user').select('id', undefined, 'email').many()
+    const withoutUndef = await queryBuilder(db, 'user').select('id', 'email').many()
+    type _ = AssertTrue<AssertEqual<typeof withUndef, typeof withoutUndef>>
+  }
+
+  // Conditional `cond ? 'field' : undefined` — when the literal is a union with
+  // undefined, the field appears in the inferred result (narrowed by Extract).
+  async function _condUndefined() {
+    const include = true as boolean
+    const r = await query(db, 'user')
+      .select('id', include ? ('firstName' as const) : undefined, 'email')
+      .one()
+    type _ = AssertTrue<
+      AssertEqual<typeof r, { id: string; firstName: string; email: string } | undefined>
+    >
+  }
+})
