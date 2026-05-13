@@ -69,6 +69,25 @@ export function concat(...args: StringArg[]): OQLExpr<string> & FieldRef<string>
   return makeCall('concat', args)
 }
 
+// `||` operator chain — emits `(a || b || ...)`. Unlike concat(), propagates
+// NULL: if any operand is NULL the whole expression is NULL. Use this form when
+// you need the expression to match a PG expression index built with `||`
+// (CONCAT() is STABLE and can't be indexed, the `||` operator is IMMUTABLE).
+export function concatOp(...args: StringArg[]): OQLExpr<string | null> & FieldRef<string | null> {
+  const expr: any = {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined,
+    entityName: '',
+    fieldName: '',
+    builder: null,
+    toOQL(ctx: FilterContext): string {
+      return `(${args.map((a) => renderArg(a, ctx)).join(' || ')})`
+    },
+  }
+  return expr
+}
+
 // ─── Null handling ──────────────────────────────────────────────────
 
 // coalesce(a, b): returns common non-null type. Typed by the LAST arg;

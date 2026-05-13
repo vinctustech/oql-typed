@@ -144,6 +144,76 @@ const categories = await query(db, 'category').many()
   </TabItem>
 </Tabs>
 
+## Lookup shortcuts
+
+For the three most common filter shapes there are dedicated methods that avoid the `where(eq(...))` boilerplate.
+
+| Method | Equivalent | Notes |
+|--------|-----------|-------|
+| `.findBy(col, value)` | `.where(eq(col, value))` | Chainable — repeated calls AND together |
+| `.findIn(col, values)` | `.where(inList(col, values))` | Chainable — repeated calls AND together |
+| `.findById(id)` | `.where(eq(<entity>.id, id)).one()` | Auto-terminates; returns `Promise<T \| undefined>` |
+
+<Tabs syncKey="shortcuts">
+  <TabItem label="findBy">
+    ```typescript
+    // Single equality — same shape as eq(...)
+    await db.user.findBy(db.user.email, 'alice@example.com').one()
+
+    // Chain to AND multiple equalities
+    await db.post
+      .findBy(db.post.status, 'PUBLISHED')
+      .findBy(db.post.author, authorId)
+      .many()
+    ```
+
+    ```oql
+    user [email = :p0]
+
+    post [status = :p0 AND author.id = :p1]
+    ```
+  </TabItem>
+  <TabItem label="findIn">
+    ```typescript
+    // List membership
+    await db.post.findIn(db.post.status, ['PUBLISHED', 'DRAFT']).many()
+
+    // Mix with findBy in a chain
+    await db.trip
+      .findBy(db.trip.store, storeId)
+      .findIn(db.trip.state, ['CONFIRMED', 'REQUESTED'])
+      .many()
+    ```
+
+    ```oql
+    post [status IN :p0]
+
+    trip [store.id = :p0 AND state IN :p1]
+    ```
+  </TabItem>
+  <TabItem label="findById">
+    ```typescript
+    // Primary-key lookup — returns Promise<T | undefined> directly
+    const user = await db.user.findById(userId)
+
+    // Still composes with .select() for narrower projections
+    const stub = await db.user.select('id', 'firstName').findById(userId)
+    ```
+
+    ```oql
+    user {...all scalars} [id = :p0]
+
+    user {id firstName} [id = :p0]
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="note">
+`.findById()` is the only one that terminates the chain — `findBy` and `findIn` return the builder so you keep calling `.one()`, `.many()`, `.count()`, etc.
+
+Note that `.findBy()` and `.findIn()` always AND their filters. `.where()` still overwrites — if you mix them, prefer chaining `findBy`/`findIn` for the AND parts and reaching for `where()` only when you need a complex expression like `or(...)` or `not(...)`.
+</Aside>
+
 ## Ordering and pagination
 
 ```typescript

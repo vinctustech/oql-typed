@@ -91,6 +91,13 @@ export type NonPKScalarKeys<D> = {
   [K in keyof D]: D[K] extends Column<any, any, infer PK> ? (PK extends true ? never : K) : never
 }[keyof D]
 
+// Type of the primary-key column for an entity (assumes single-column PK).
+export type PKType<S extends Schema, Name extends keyof S> = {
+  [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, any, infer PK>
+    ? PK extends true ? T : never
+    : never
+}[keyof Unwrap<S[Name]>]
+
 // ══════════════════════════════════════════════════════════════════════
 // FieldRefsFor — what you get when you access an entity handle
 // ══════════════════════════════════════════════════════════════════════
@@ -134,10 +141,12 @@ export interface OQLProjectionArg {
 //  - a scalar field name (string)
 //  - an object { relationName: RelationSpec }
 //  - an OQL expression
+//  - undefined (silently dropped — enables `cond ? 'field' : undefined` patterns)
 export type ProjectionArg<S extends Schema, Name extends keyof S> =
   | ScalarKeys<Unwrap<S[Name]>>
   | RelationSpec<S, Name>
   | OQLProjectionArg
+  | undefined
 
 // Filter/order on sub-collections. `where` accepts a full FilterExpr OR a bare
 // FieldRef<boolean> (short for `eq(field, true)`), matching the top-level .where().

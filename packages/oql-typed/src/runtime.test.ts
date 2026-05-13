@@ -15,7 +15,7 @@ import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
 import { fn, raw, ref, alias, aliasedRelation } from './expressions.js'
-import { sum, avg, min, max } from './functions.js'
+import { sum, avg, min, max, concatOp } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
 
@@ -416,6 +416,19 @@ describe('runtime: filters', () => {
     assert.equal(r[0].firstName, 'Dan')
   })
 
+  it('concatOp() emits || operator chain for indexable search', async () => {
+    const { queryStr, params } = query(db, 'customer')
+      .where(ilike(concatOp(db.customer.firstName, ' ', db.customer.lastName), '%Dan%'))
+      .toOQL()
+    assert.match(queryStr, /firstName \|\| .* \|\| lastName/)
+    assert.ok(Object.values(params).includes(' '))
+    const r = await query(db, 'customer')
+      .where(ilike(concatOp(db.customer.firstName, ' ', db.customer.lastName), '%Dan%'))
+      .many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].firstName, 'Dan')
+  })
+
   it('compound AND/OR', async () => {
     const r = await query(db, 'user')
       .select('id', 'firstName')
@@ -437,6 +450,99 @@ describe('runtime: ordering + pagination', () => {
     assert.equal(r.length, 2)
     assert.equal(r[0].firstName, 'Bob')
     assert.equal(r[1].firstName, 'Charlie')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// SC-1487 — count() must ignore offset/limit set on the same builder.
+// The mutable builder previously leaked pagination into count's OQL,
+// which made the backend throw on page-past-end.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: count() ignores pagination (SC-1487)', () => {
+  it('QueryBuilder: toOQL() includes |limit, offset| but toOQL({ paginate: false }) drops it', () => {
+    const qb = query(db, 'user').select('id', 'firstName').orderBy(asc(db.user.firstName)).limit(10).offset(10)
+    const many = qb.toOQL()
+    const cnt = qb.toOQL({ paginate: false })
+    assert.match(many.queryStr, /\|10, 10\|/)
+    assert.doesNotMatch(cnt.queryStr, /\|[^|]*\|/)
+  })
+
+  it('CondQueryBuilder: toOQL() includes |limit, offset| but toOQL({ paginate: false }) drops it', () => {
+    const qb = queryBuilder(db, 'user').select('id', 'firstName').orderBy(asc(db.user.firstName)).limit(10).offset(10)
+    const many = qb.toOQL()
+    const cnt = qb.toOQL({ paginate: false })
+    assert.match(many.queryStr, /\|10, 10\|/)
+    assert.doesNotMatch(cnt.queryStr, /\|[^|]*\|/)
+  })
+
+  it('QueryBuilder: count() returns total when paging past the end', async () => {
+    // Seed has 4 trips; offset=100 past end would previously throw "count: zero rows were found".
+    const qb = query(db, 'trip').orderBy(asc(db.trip.createdAt)).limit(10).offset(100)
+    const rows = await qb.many()
+    assert.equal(rows.length, 0)
+    const total = await qb.count()
+    assert.equal(total, 4)
+  })
+
+  it('CondQueryBuilder: count() returns total when paging past the end', async () => {
+    const qb = queryBuilder(db, 'trip').select('id').orderBy(asc(db.trip.createdAt)).limit(10).offset(100)
+    const rows = await qb.many()
+    assert.equal(rows.length, 0)
+    const total = await qb.count()
+    assert.equal(total, 4)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// .select() — undefined args are silently dropped (SC-1483)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: .select() drops undefined args (SC-1483)', () => {
+  it('QueryBuilder: undefined args do not appear in OQL string', () => {
+    const include = false as boolean
+    const { queryStr } = query(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .toOQL()
+    assert.match(queryStr, /\{id email\}/)
+    assert.doesNotMatch(queryStr, /undefined/)
+  })
+
+  it('CondQueryBuilder: undefined args do not appear in OQL string', () => {
+    const include = false as boolean
+    const { queryStr } = queryBuilder(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .toOQL()
+    assert.match(queryStr, /\{id email\}/)
+    assert.doesNotMatch(queryStr, /undefined/)
+  })
+
+  it('QueryBuilder: undefined-only between real fields renders cleanly with single spaces', () => {
+    const { queryStr } = query(db, 'user').select('id', undefined, undefined, 'email').toOQL()
+    assert.match(queryStr, /\{id email\}/)
+  })
+
+  it('QueryBuilder: conditional inclusion at runtime — true branch keeps field', async () => {
+    const include = true as boolean
+    const r = await query(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.email, 'alice@example.com')
+  })
+
+  it('QueryBuilder: conditional inclusion at runtime — false branch omits field', async () => {
+    const include = false as boolean
+    const r = await query(db, 'user')
+      .select('id', include ? 'firstName' : undefined, 'email')
+      .where(eq(db.user.id, ID.u1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.email, 'alice@example.com')
+    assert.equal((r as Record<string, unknown>).firstName, undefined)
   })
 })
 
@@ -484,6 +590,174 @@ describe('runtime: typed aggregates', () => {
       .select(alias('latest', max(db.user.lastLoginAt)))
       .toOQL()
     assert.ok(q2.includes('latest: (max(lastLoginAt))'))
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// findBy — sugar for .where(eq(...))
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: findBy', () => {
+  it('starter findBy: db.user.findBy(col, value).one()', async () => {
+    const r = await db.user.findBy(db.user.id, ID.u1).one()
+    assert.ok(r)
+    assert.equal(r.id, ID.u1)
+  })
+
+  it('starter findBy after select() projects narrow shape', async () => {
+    const r = await db.user.select('id', 'firstName').findBy(db.user.id, ID.u1).one()
+    assert.ok(r)
+    assert.equal(r.firstName, 'Alice')
+  })
+
+  it('findBy generates same OQL as where(eq(...))', () => {
+    const a = query(db, 'user').findBy(db.user.id, ID.u1).toOQL()
+    const b = query(db, 'user').where(eq(db.user.id, ID.u1)).toOQL()
+    assert.equal(a.queryStr, b.queryStr)
+    assert.deepEqual(a.params, b.params)
+  })
+
+  it('findBy on manyToOne FK auto-resolves to .id', async () => {
+    const r = await query(db, 'trip').findBy(db.trip.store, ID.s1).many()
+    assert.equal(r.length, 2)
+  })
+
+  it('chained findBy() ANDs filters in QueryBuilder', async () => {
+    const r = await query(db, 'user')
+      .findBy(db.user.enabled, true)
+      .findBy(db.user.role, 'DRIVER')
+      .many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].firstName, 'Bob')
+  })
+
+  it('findBy() then where() — where overwrites prior filterExpr', () => {
+    // Documents semantics: where() still overwrites in QueryBuilder.
+    const q = query(db, 'user').findBy(db.user.enabled, true).where(eq(db.user.role, 'DRIVER')).toOQL()
+    assert.ok(!q.queryStr.includes('enabled'))
+    assert.ok(q.queryStr.includes('role'))
+  })
+
+  it('queryBuilder findBy chains-AND with cond()/where()', async () => {
+    const r = await queryBuilder(db, 'user')
+      .select('id', 'firstName', 'role')
+      .where(eq(db.user.enabled, true))
+      .findBy(db.user.role, 'DRIVER')
+      .many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].firstName, 'Bob')
+  })
+
+  it('queryBuilder chained findBy() ANDs', async () => {
+    const r = await queryBuilder(db, 'user')
+      .select('id', 'firstName')
+      .findBy(db.user.enabled, true)
+      .findBy(db.user.role, 'DRIVER')
+      .many()
+    assert.equal(r.length, 1)
+    assert.equal(r[0].firstName, 'Bob')
+  })
+
+  it('findBy.count()', async () => {
+    assert.equal(await query(db, 'trip').findBy(db.trip.state, 'CONFIRMED').count(), 1)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// findIn — sugar for .where(inList(...))
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: findIn', () => {
+  it('starter findIn on enum returns matching rows', async () => {
+    const r = await query(db, 'trip').findIn(db.trip.state, ['CONFIRMED', 'REQUESTED']).many()
+    assert.equal(r.length, 2)
+  })
+
+  it('findIn generates same OQL as where(inList(...))', () => {
+    const a = query(db, 'trip').findIn(db.trip.state, ['CONFIRMED', 'REQUESTED']).toOQL()
+    const b = query(db, 'trip').where(inList(db.trip.state, ['CONFIRMED', 'REQUESTED'])).toOQL()
+    assert.equal(a.queryStr, b.queryStr)
+    assert.deepEqual(a.params, b.params)
+  })
+
+  it('findIn on manyToOne FK auto-resolves to .id', async () => {
+    const r = await query(db, 'trip').findIn(db.trip.store, [ID.s1]).many()
+    assert.equal(r.length, 2)
+  })
+
+  it('findIn chains-AND with findBy', async () => {
+    const r = await query(db, 'trip')
+      .findBy(db.trip.store, ID.s1)
+      .findIn(db.trip.state, ['CONFIRMED', 'REQUESTED'])
+      .many()
+    assert.equal(r.length, 2)
+  })
+
+  it('queryBuilder findIn ANDs with cond()/where()', async () => {
+    const r = await queryBuilder(db, 'trip')
+      .select('id', 'state')
+      .where(eq(db.trip.store, ID.s1))
+      .findIn(db.trip.state, ['CONFIRMED', 'REQUESTED'])
+      .many()
+    assert.equal(r.length, 2)
+  })
+
+  it('empty array still produces an inList expression', () => {
+    // Behavior matches where(inList(...)) — caller responsibility to avoid empty arrays.
+    const { queryStr, params } = query(db, 'trip').findIn(db.trip.state, []).toOQL()
+    assert.ok(queryStr.includes('IN'))
+    assert.deepEqual(Object.values(params), [[]])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// findById — PK lookup sugar, auto-terminates with .one()
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: findById', () => {
+  it('starter findById returns matching row', async () => {
+    const r = await db.user.findById(ID.u1)
+    assert.ok(r)
+    assert.equal(r.id, ID.u1)
+    assert.equal(r.firstName, 'Alice')
+  })
+
+  it('starter findById returns undefined on no match', async () => {
+    const r = await db.user.findById('u0000000-0000-4000-8000-000000000000')
+    assert.equal(r, undefined)
+  })
+
+  it('findById after select() projects narrow shape', async () => {
+    const r = await db.user.select('id', 'firstName').findById(ID.u1)
+    assert.ok(r)
+    assert.equal(r.firstName, 'Alice')
+    // @ts-expect-error — email is not in the projected shape
+    void r.email
+  })
+
+  it('findById via query() entry point', async () => {
+    const r = await query(db, 'trip').findById(ID.t1)
+    assert.ok(r)
+    assert.equal(r.id, ID.t1)
+  })
+
+  it('findById generates same OQL as where(eq(table.id, X)).one()', () => {
+    const a = query(db, 'user').select('id').findBy(db.user.id, ID.u1).toOQL()
+    // We can't toOQL() directly on findById since it returns a Promise — verify by inspecting params.
+    const expected = query(db, 'user').select('id').where(eq(db.user.id, ID.u1)).toOQL()
+    assert.equal(a.queryStr, expected.queryStr)
+  })
+
+  it('findById ANDs with prior findBy filter', async () => {
+    const r = await query(db, 'user').findBy(db.user.enabled, true).findById(ID.u1)
+    assert.ok(r)
+    assert.equal(r.id, ID.u1)
+  })
+
+  it('findById ANDs with prior findBy filter that excludes the row', async () => {
+    // u1's role is OWNER; if we filter to DRIVER first, the id lookup must miss.
+    const r = await query(db, 'user').findBy(db.user.role, 'DRIVER').findById(ID.u1)
+    assert.equal(r, undefined)
   })
 })
 

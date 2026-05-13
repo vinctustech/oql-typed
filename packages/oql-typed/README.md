@@ -68,16 +68,22 @@ const oql = new OQL_PG(dm, host, port, database, username, password)
 ```typescript
 import { query, eq, and, inList, ilike, or, exists, desc } from '@vinctus/oql-typed'
 
-// Result type is inferred from .select() — no manual type parameter
+// Result type is inferred from .select() — no manual type parameter.
+// .findById() is sugar for .where(eq(<entity>.id, X)).one() and auto-terminates.
 const result = await query(oql, user)
   .select('id', 'firstName', 'lastName', { account: ['id', 'name'] })
-  .where(eq(user.id, userId))
-  .one()
+  .findById(userId)
 // => { id: string, firstName: string, lastName: string, account: { id: string, name: string } } | undefined
 
 // No selection — returns all scalar fields
 const accounts = await query(oql, account).many()
 // => { id: string, name: string, enabled: boolean, plan: string }[]
+
+// Common shortcuts: .findBy() (single eq), .findIn() (IN list) — both chainable AND
+const drivers = await query(oql, user)
+  .findBy(user.role, 'DRIVER')
+  .findIn(user.status, ['ACTIVE', 'ON_BREAK'])
+  .many()
 ```
 
 ## What the compiler catches

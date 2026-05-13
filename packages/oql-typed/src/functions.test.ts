@@ -12,6 +12,7 @@ import {
   trim,
   length,
   concat,
+  concatOp,
   coalesce,
   count,
   sum,
@@ -59,6 +60,12 @@ describe('typed function wrappers', () => {
   async function _concat() {
     const e = concat(db.user.firstName, ' ', db.user.lastName)
     type _ = AssertTrue<AssertEqual<(typeof e)['_type'], string>>
+  }
+
+  // concatOp returns string | null (|| propagates NULL)
+  async function _concatOp() {
+    const e = concatOp(db.user.firstName, ' ', db.user.lastName)
+    type _ = AssertTrue<AssertEqual<(typeof e)['_type'], string | null>>
   }
 
   // coalesce — non-null last arg makes result non-null
