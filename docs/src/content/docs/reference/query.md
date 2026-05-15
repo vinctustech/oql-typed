@@ -97,10 +97,10 @@ queryBuilder(db, 'user')
 
 ## Mutations
 
-### `insert(oql, entity, input)`
+### `insert(db, entityName, input)`
 
-Returns the full row. Required fields (non-nullable, no default) are enforced at the type level.
+Returns the full row. Required fields (non-nullable, no default) are enforced at the type level; the primary key is optional (OQL auto-generates if omitted).
 
-### `update(oql, entity, id, patch)`
+### `update(db, entityName, id, patch)`
 
 Returns the primary key plus the patched fields. All patch fields are optional.

@@ -7,20 +7,21 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
 Mutations have the same type-safety guarantees as queries — the input shape is enforced, nullable fields are honored, and the returned row is fully typed.
 
-## `insert(oql, entity, input)`
+## `insert(db, entityName, input)`
 
 The input is typed:
 
 - Non-nullable columns with no default → **required**
 - Nullable columns → **optional** (omit to insert `NULL`)
 - `manyToOne` relations → accept the FK id directly
+- Primary key is optional — OQL auto-generates if omitted; pass one explicitly to override
 
 <Tabs syncKey="insert">
   <TabItem label="TypeScript">
     ```typescript
     import { insert } from '@vinctus/oql-typed'
 
-    const alice = await insert(oql, user, {
+    const alice = await insert(db, 'user', {
       id:        crypto.randomUUID(),
       email:     'alice@example.com',
       firstName: 'Alice',
@@ -44,7 +45,7 @@ The input is typed:
   </TabItem>
   <TabItem label="With a manyToOne FK">
     ```typescript
-    const draft = await insert(oql, post, {
+    const draft = await insert(db, 'post', {
       id:        crypto.randomUUID(),
       title:     'Hello',
       slug:      'hello',
@@ -64,14 +65,14 @@ The input is typed:
   </TabItem>
   <TabItem label="What the compiler rejects">
     ```typescript
-    insert(oql, user, {
-      id:        crypto.randomUUID(),
-      email:     'bob@example.com',
+    insert(db, 'user', {
+      id:    crypto.randomUUID(),
+      email: 'bob@example.com',
       // ✗ missing required: firstName, lastName, role, enabled
     })
     // → Type error: missing required fields
 
-    insert(oql, user, {
+    insert(db, 'user', {
       id:        crypto.randomUUID(),
       email:     'bob@example.com',
       firstName: 'Bob',
@@ -84,7 +85,7 @@ The input is typed:
   </TabItem>
 </Tabs>
 
-## `update(oql, entity, id, patch)`
+## `update(db, entityName, id, patch)`
 
 Every field in the patch is optional. Returns the primary key plus the fields you patched, all typed.
 
@@ -93,7 +94,7 @@ Every field in the patch is optional. Returns the primary key plus the fields yo
     ```typescript
     import { update } from '@vinctus/oql-typed'
 
-    const changed = await update(oql, user, alice.id, {
+    const changed = await update(db, 'user', alice.id, {
       firstName: 'Alicia',
       role:      'ADMIN',
     })
@@ -106,7 +107,7 @@ Every field in the patch is optional. Returns the primary key plus the fields yo
   </TabItem>
   <TabItem label="Clearing a nullable field">
     ```typescript
-    await update(oql, post, post.id, {
+    await update(db, 'post', postId, {
       publishedAt: null,    // explicitly clear to NULL
     })
     ```

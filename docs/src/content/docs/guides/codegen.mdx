@@ -5,7 +5,15 @@ description: Bootstrap a TypeScript schema from an existing .dm file — useful 
 
 import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
-If you already have an OQL `.dm` data model, the `oql-typed-codegen` CLI generates a TypeScript schema from it. This is the fastest way to adopt `@vinctus/oql-typed` in an existing project.
+If you already have an OQL `.dm` data model, the `oql-typed-codegen` CLI generates a TypeScript schema from it. This is the fastest way to adopt `@vinctus/oql-typed` in an existing project — and the recommended way to keep your `.dm` file and your TypeScript schema in sync.
+
+## The intended workflow
+
+Treat the `.dm` file as the source of truth. Re-run codegen whenever it changes — the generated TypeScript imports `defineSchema`, `entity`, columns, and relations from `@vinctus/oql-typed` exactly as you'd write them by hand.
+
+<Aside type="note">
+The reverse direction — generating `.dm` from a TypeScript schema with `generateDM(...)` — is currently a stub that throws. It's being rebuilt for the schema-object API. For now, the `.dm` file is the source of truth; bootstrap or regenerate `schema.ts` from it.
+</Aside>
 
 ## Command-line
 
@@ -17,21 +25,23 @@ If you already have an OQL `.dm` data model, the `oql-typed-codegen` CLI generat
    npx oql-typed-codegen schema.dm src/schema.generated.ts
    ```
 
-2. **Import the generated entities.**
+2. **Import the generated schema.**
+
+   The generated file exports a single `schema` constant built with `defineSchema(...)`.
 
    ```typescript
-   import { account, user, post } from './schema.generated.js'
+   import { schema } from './schema.generated.js'
    import { typedOQL } from '@vinctus/oql-typed'
 
-   const db = typedOQL(oql, { account, user, post })
+   const db = typedOQL(oql, schema)
    ```
 
 3. **Start writing typed queries.**
 
    ```typescript
-   import { query, eq } from '@vinctus/oql-typed'
+   import { eq } from '@vinctus/oql-typed'
 
-   await query(db, 'user').where(eq(db.user.enabled, true)).many()
+   await db.user.where(eq(db.user.enabled, true)).many()
    ```
 
 </Steps>
@@ -54,38 +64,58 @@ import { parseDMAndGenerate } from '@vinctus/oql-typed'
 const tsSource = parseDMAndGenerate(dmString)
 ```
 
-Same output as the CLI — a TypeScript module that exports every entity in the `.dm`.
+Same output as the CLI — a TypeScript module that exports a `schema` built with `defineSchema(...)`.
 
-## Going the other direction
+For finer control, the two-stage form is also exported:
 
-`generateDM(...entities)` is the inverse: it emits a `.dm` string from TypeScript entities. You normally hand the result to `new OQL_PG(dm, ...)` at startup:
+```typescript
+import { parseDM, generateSchemaTS } from '@vinctus/oql-typed'
 
-<Tabs syncKey="dm-direction">
-  <TabItem label="TS → DM">
-    ```typescript
-    import { generateDM } from '@vinctus/oql-typed'
-    import { user, post } from './schema.js'
+const parsed   = parseDM(dmString)
+const tsSource = generateSchemaTS(parsed)
+```
 
-    const dm = generateDM(user, post)
-    // → "entity user(users) { ... } entity post(posts) { ... }"
-    ```
-  </TabItem>
-  <TabItem label="DM → TS">
-    ```typescript
-    import { parseDMAndGenerate } from '@vinctus/oql-typed'
+## What the generated file looks like
 
-    const tsSource = parseDMAndGenerate(dmString)
-    // → "import { entity, uuid, ... } from '@vinctus/oql-typed' ..."
-    ```
-  </TabItem>
-</Tabs>
+Running the codegen on a `.dm` like:
 
-## About the `@ts-nocheck` header
+```oql
+entity user (users) {
+  *id: uuid
+  email: text!
+  account (account_id): account!
+}
 
-The generated file starts with `// @ts-nocheck`. This suppresses TS7022 ("implicit any") errors that arise from circular entity references (e.g. `user` → `post` → `author: user`) under strict mode.
+entity account (accounts) {
+  *id: uuid
+  name: text!
+  users: [user]
+}
+```
 
-<Aside type="note">
-Call-site type inference is unaffected. Result types, typo detection on field names, and operator type checks all work fully when you `import { query, eq, ... } from '@vinctus/oql-typed'` and use the generated schema.
-</Aside>
+produces:
 
-If you'd rather author the schema by hand to keep strict checking across the file, that works too — just write the `entity(...)` calls yourself and use `generateDM()` at runtime.
+```typescript
+import { defineSchema, entity, manyToOne, oneToMany, text, uuid } from '@vinctus/oql-typed'
+
+export const schema = defineSchema({
+  user: entity('users', {
+    id: uuid().primaryKey(),
+    email: text(),
+    account: manyToOne('account', { column: 'account_id' }),
+  }),
+  account: entity('accounts', {
+    id: uuid().primaryKey(),
+    name: text(),
+    users: oneToMany('user'),
+  }),
+})
+```
+
+No `@ts-nocheck` header — the schema-object design preserves all type information under strict mode.
+
+## Hand-authoring is fine too
+
+The generator emits exactly the API you'd use by hand. You can write `defineSchema(...)` yourself and skip codegen entirely — useful when the schema is small, when you want strong control over inline type aliases (`type UserRole = ...`), or when you don't have a `.dm` to start from.
+
+If you go that route, keep a `.dm` file alongside it for OQL itself to consume at startup. They have to stay in sync — there is no schema-object-to-`.dm` generator at the moment.

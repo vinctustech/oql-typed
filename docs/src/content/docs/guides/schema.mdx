@@ -5,26 +5,35 @@ description: Define entities, columns, and relations — the single source of tr
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
-Your schema is the source of truth. Define it once in TypeScript and both runtime OQL and compile-time types fall out of it.
+Your schema is the source of truth. Define it once in TypeScript with `defineSchema(...)` and both runtime OQL and compile-time types fall out of it.
 
-## A minimal entity
+## Shape of a schema
+
+A schema is a single object passed to `defineSchema(...)`. Each entry maps an **entity name** (the key) to an entity definition produced by `entity(...)`. Relations reference other entities by **string literal**, so there are no circular-import problems.
 
 ```typescript
-import { entity, uuid, text, boolean } from '@vinctus/oql-typed'
+import { defineSchema, entity, uuid, text, boolean } from '@vinctus/oql-typed'
 
-const category = entity('category', 'categories', {
-  id:      uuid().primaryKey(),
-  name:    text(),
-  slug:    text(),
-  enabled: boolean(),
+export const schema = defineSchema({
+  category: entity('categories', {
+    id:      uuid().primaryKey(),
+    name:    text(),
+    slug:    text(),
+    enabled: boolean(),
+  }),
 })
 ```
 
-`entity(name, tableName?, fields)`:
+`entity(...)` has two forms:
 
-- **`name`** — how you refer to the entity in OQL queries (`query(db, 'category')`).
-- **`tableName`** — optional; defaults to `name`. Override when your SQL table has a different name.
-- **`fields`** — a map of column and relation definitions.
+- **`entity(fields)`** — the entity name doubles as the table name.
+- **`entity(tableName, fields)`** — use when your SQL table name differs from the entity name.
+
+The **entity name** (used in `query(db, 'category')`, OQL strings, and relation targets) is the **key** in the `defineSchema({...})` object — not an argument to `entity()`.
+
+<Aside type="note">
+`defineSchema` is just an identity function with a `const` generic — it preserves literal types so TypeScript can infer everything (entity names, enum values, field shapes) without manual annotations. You can pass plain objects to `typedOQL(...)` too, but `defineSchema` is preferred.
+</Aside>
 
 ## Column types and modifiers
 
@@ -45,13 +54,13 @@ import {
 | `integer()` | `number` | `integer` |
 | `bigint()` | `bigint` | `bigint` |
 | `float()` | `number` | `real` / `double precision` |
-| `decimal(p, s)` | `number` | `decimal(p,s)` |
+| `decimal(precision?, scale?)` | `bigint` | `decimal(p,s)` |
 | `boolean()` | `boolean` | `boolean` |
 | `timestamp()` | `Date` | `timestamp` |
-| `date()` | `string` | `date` |
+| `date()` | `Date` | `date` |
 | `time()` | `string` | `time` |
 | `interval()` | `string` | `interval` |
-| `json()` | `unknown` | `json` / `jsonb` |
+| `json<T = unknown>()` | `T` | `json` / `jsonb` |
 | `textArray()` | `string[]` | `text[]` |
 | `integerArray()` | `number[]` | `integer[]` |
 | `enumType<T>(name, values)` | `T` | custom enum |
@@ -61,7 +70,7 @@ import {
 Chain modifiers after a column constructor:
 
 ```typescript
-const user = entity('user', 'users', {
+user: entity('users', {
   id:          uuid().primaryKey(),                             // marks PK
   firstName:   text().column('first_name'),                     // renames column
   email:       text(),
@@ -76,7 +85,7 @@ const user = entity('user', 'users', {
 | `.column('alias')` | Uses a different database column name than the TypeScript field name. |
 
 <Aside type="note">
-`.nullable()` changes both the TypeScript type and the generated DM definition. Mismatching nullability between your schema and the database is one of the most common bugs typed queries catch.
+`.nullable()` changes both the TypeScript type and the underlying DM definition. Mismatching nullability between your schema and the database is one of the most common bugs typed queries catch.
 </Aside>
 
 ## Enums
@@ -84,7 +93,7 @@ const user = entity('user', 'users', {
 ```typescript
 type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
-const post = entity('post', 'posts', {
+post: entity('posts', {
   id:     uuid().primaryKey(),
   title:  text(),
   status: enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
@@ -100,24 +109,24 @@ eq(db.post.status, 'APPROVED')    // ✗ type error
 
 ## Relations
 
+Relations target other entities **by string literal** — the same name you use as the key in `defineSchema(...)`. No `() => ref` thunks, no circular-import worries.
+
 | Constructor | Shape at the type level | OQL emits |
 |-------------|-------------------------|-----------|
-| `manyToOne(() => target, { column })` | One target row | LEFT JOIN |
-| `oneToMany(() => target)` | `Target[]` | lateral subquery |
-| `manyToMany(() => target, { junction })` | `Target[]` | lateral subquery with junction join |
-| `oneToOne(() => target, opts?)` | One target row | lateral subquery (single) |
-
-Targets are wrapped in a thunk `() => target` so circular references resolve correctly.
+| `manyToOne(target, { column })` | One target row | LEFT JOIN |
+| `oneToMany(target)` | `Target[]` | lateral subquery |
+| `manyToMany(target, { junction })` | `Target[]` | lateral subquery with junction join |
+| `oneToOne(target, { reference? })` | One target row | lateral subquery (single) |
 
 ### manyToOne — foreign key
 
 ```typescript
-const post = entity('post', 'posts', {
+post: entity('posts', {
   id:       uuid().primaryKey(),
   title:    text(),
-  author:   manyToOne(() => user,     { column: 'author_id' }),
-  category: manyToOne(() => category, { column: 'category_id' }).nullable(),
-})
+  author:   manyToOne('user',     { column: 'author_id' }),
+  category: manyToOne('category', { column: 'category_id' }).nullable(),
+}),
 ```
 
 With `manyToOne`, field access builds **dotted paths** that keep their types:
@@ -132,117 +141,93 @@ db.post.category.id        // FieldRef<string | null> (propagates nullability)
 ### oneToMany — reverse FK
 
 ```typescript
-const user = entity('user', 'users', {
+user: entity('users', {
   id:    uuid().primaryKey(),
-  posts: oneToMany(() => post),
-})
+  posts: oneToMany('post'),
+}),
 ```
 
 ### manyToMany — junction table
 
 ```typescript
-const post = entity('post', 'posts', {
+post: entity('posts', {
   id:   uuid().primaryKey(),
-  tags: manyToMany(() => tag, { junction: 'post_tags' }),
-})
+  tags: manyToMany('tag', { junction: 'post_tags' }),
+}),
 
-const tag = entity('tag', 'tags', {
+tag: entity('tags', {
   id:    uuid().primaryKey(),
   name:  text(),
-  posts: manyToMany(() => post, { junction: 'post_tags' }),
-})
+  posts: manyToMany('post', { junction: 'post_tags' }),
+}),
 ```
 
 ### oneToOne
 
 ```typescript
-const user = entity('user', 'users', {
+user: entity('users', {
   id:      uuid().primaryKey(),
-  profile: oneToOne(() => profile),
-})
+  profile: oneToOne('profile'),
+}),
 
-const profile = entity('profile', 'profiles', {
+profile: entity('profiles', {
   id:      uuid().primaryKey(),
-  user:    manyToOne(() => user, { column: 'user_id' }),
+  user:    manyToOne('user', { column: 'user_id' }),
   bio:     text(),
   website: text().nullable(),
-})
+}),
+```
+
+The optional `{ reference }` option points at the field on the target that holds the FK back — useful when the owning side has a non-default name:
+
+```typescript
+user: entity('users', {
+  id:      uuid().primaryKey(),
+  vehicle: oneToOne('vehicle', { reference: 'driver' }).nullable(),
+}),
 ```
 
 ### Self-referencing manyToOne
 
-Relations can target the same entity — useful for trees (threaded comments, category hierarchies, reply chains):
+Self-references work out of the box because targets are strings:
 
 ```typescript
-const comment = entity('comment', 'comments', {
+comment: entity('comments', {
   id:     uuid().primaryKey(),
   body:   text(),
-  parent: manyToOne(() => comment, { column: 'parent_id' }).nullable(),
-})
+  parent: manyToOne('comment', { column: 'parent_id' }).nullable(),
+}),
 ```
 
 ### Two relations to the same target
 
-Nothing special — just give them different names and columns:
+Just give them different field names and column aliases:
 
 ```typescript
-const post = entity('post', 'posts', {
+post: entity('posts', {
   id:         uuid().primaryKey(),
   title:      text(),
-  author:     manyToOne(() => user, { column: 'author_id' }),
-  reviewedBy: manyToOne(() => user, { column: 'reviewed_by_id' }).nullable(),
-})
+  author:     manyToOne('user', { column: 'author_id' }),
+  reviewedBy: manyToOne('user', { column: 'reviewed_by_id' }).nullable(),
+}),
 ```
 
-## Generating the OQL data model
+## Wiring up the runtime
 
-OQL itself is driven by a `.dm` string. `generateDM(...entities)` produces it from your TypeScript schema:
+`typedOQL(oqlInstance, schema)` returns a typed `db` handle. The schema you pass is the same object you got from `defineSchema(...)`:
 
-<Tabs syncKey="dm-roundtrip">
-  <TabItem label="TypeScript">
-    ```typescript
-    import { generateDM } from '@vinctus/oql-typed'
-    import { user, post, tag } from './schema.js'
+```typescript
+import { typedOQL } from '@vinctus/oql-typed'
+import { OQL_PG } from '@vinctus/oql-pg'
+import { schema } from './schema.js'
 
-    const dm = generateDM(user, post, tag)
-    ```
-  </TabItem>
-  <TabItem label="Generated .dm">
-    ```oql
-    entity user(users) {
-      *id: uuid
-      email: text!
-      firstName(first_name): text!
-      lastName(last_name): text!
-      role: UserRole!
-      enabled: boolean!
-      lastLoginAt(last_login_at): timestamp
-      posts: [posts]
-    }
+// dm is the OQL data-model string (see the codegen guide for how to get it).
+const oqlInstance = new OQL_PG(dm, host, port, database, username, password)
 
-    entity post(posts) {
-      *id: uuid
-      title: text!
-      slug: text!
-      status: PostStatus!
-      viewCount(view_count): integer!
-      createdAt(created_at): timestamp!
-      author(author_id): users
-      tags: [tags](post_tags)
-    }
+export const db = typedOQL(oqlInstance, schema)
+```
 
-    entity tag(tags) {
-      *id: uuid
-      name: text!
-      posts: [posts](post_tags)
-    }
-    ```
-  </TabItem>
-</Tabs>
-
-<Aside type="tip">
-You can also start from an existing `.dm` file. See [DM codegen](/oql-typed/guides/codegen/).
-</Aside>
+`db.post.id`, `db.post.author.email`, `db.post.select(...)`, etc. all become available with full type inference.
 
 ## The full blog schema
 
@@ -250,81 +235,84 @@ Every column type, every relation kind, every modifier. The examples elsewhere i
 
 ```typescript
 import {
-  entity, uuid, text, integer, bigint, float, decimal,
+  defineSchema, entity,
+  uuid, text, integer, bigint, float, decimal,
   boolean, timestamp, date, time, interval,
   json, textArray, integerArray, enumType,
   manyToOne, oneToMany, manyToMany, oneToOne,
 } from '@vinctus/oql-typed'
 
-type UserRole = 'ADMIN' | 'AUTHOR' | 'READER'
-type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+export type UserRole = 'ADMIN' | 'AUTHOR' | 'READER'
+export type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
-const user = entity('user', 'users', {
-  id:          uuid().primaryKey(),
-  email:       text(),
-  firstName:   text().column('first_name'),
-  lastName:    text().column('last_name'),
-  role:        enumType<UserRole>('UserRole', ['ADMIN', 'AUTHOR', 'READER']),
-  enabled:     boolean(),
-  rating:      float().nullable(),                             // float
-  metadata:    json().nullable(),                              // json
-  lastLoginAt: timestamp().column('last_login_at').nullable(),
-  profile:     oneToOne(() => profile),
-  posts:       oneToMany(() => post),
-  comments:    oneToMany(() => comment),
-})
+export const schema = defineSchema({
+  user: entity('users', {
+    id:          uuid().primaryKey(),
+    email:       text(),
+    firstName:   text().column('first_name'),
+    lastName:    text().column('last_name'),
+    role:        enumType<UserRole>('UserRole', ['ADMIN', 'AUTHOR', 'READER']),
+    enabled:     boolean(),
+    rating:      float().nullable(),
+    metadata:    json().nullable(),
+    lastLoginAt: timestamp().column('last_login_at').nullable(),
+    profile:     oneToOne('profile'),
+    posts:       oneToMany('post'),
+    comments:    oneToMany('comment'),
+  }),
 
-const profile = entity('profile', 'profiles', {
-  id:      uuid().primaryKey(),
-  user:    manyToOne(() => user, { column: 'user_id' }),
-  bio:     text(),
-  website: text().nullable(),
-})
+  profile: entity('profiles', {
+    id:      uuid().primaryKey(),
+    user:    manyToOne('user', { column: 'user_id' }),
+    bio:     text(),
+    website: text().nullable(),
+  }),
 
-const category = entity('category', 'categories', {
-  id:   uuid().primaryKey(),
-  name: text(),
-  slug: text(),
-})
+  category: entity('categories', {
+    id:   uuid().primaryKey(),
+    name: text(),
+    slug: text(),
+  }),
 
-const tag = entity('tag', 'tags', {
-  id:    uuid().primaryKey(),
-  name:  text(),
-  posts: manyToMany(() => post, { junction: 'post_tags' }),
-})
+  tag: entity('tags', {
+    id:    uuid().primaryKey(),
+    name:  text(),
+    posts: manyToMany('post', { junction: 'post_tags' }),
+  }),
 
-const post = entity('post', 'posts', {
-  id:            uuid().primaryKey(),
-  title:         text(),
-  slug:          text(),
-  body:          text(),
-  status:        enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
-  featured:      boolean(),
-  viewCount:     integer().column('view_count'),
-  wordCount:     bigint().column('word_count'),               // bigint
-  readingTime:   decimal(4, 2).column('reading_time').nullable(), // decimal
-  createdAt:     timestamp().column('created_at'),
-  publishedAt:   timestamp().column('published_at').nullable(),
-  publishedOn:   date().column('published_on').nullable(),    // date
-  publishTime:   time().column('publish_time').nullable(),    // time
-  editWindow:    interval().nullable(),                       // interval
-  keywords:      textArray(),                                 // text[]
-  visitHistogram: integerArray().column('visit_histogram'),   // integer[]
-  metadata:      json().nullable(),
-  author:        manyToOne(() => user, { column: 'author_id' }),
-  reviewedBy:    manyToOne(() => user, { column: 'reviewed_by_id' }).nullable(),
-  category:      manyToOne(() => category, { column: 'category_id' }).nullable(),
-  comments:      oneToMany(() => comment),
-  tags:          manyToMany(() => tag, { junction: 'post_tags' }),
-})
+  post: entity('posts', {
+    id:             uuid().primaryKey(),
+    title:          text(),
+    slug:           text(),
+    body:           text(),
+    status:         enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
+    featured:       boolean(),
+    viewCount:      integer().column('view_count'),
+    wordCount:      bigint().column('word_count'),
+    readingTime:    decimal(4, 2).column('reading_time').nullable(),
+    createdAt:      timestamp().column('created_at'),
+    publishedAt:    timestamp().column('published_at').nullable(),
+    publishedOn:    date().column('published_on').nullable(),
+    publishTime:    time().column('publish_time').nullable(),
+    editWindow:     interval().nullable(),
+    keywords:       textArray(),
+    visitHistogram: integerArray().column('visit_histogram'),
+    metadata:       json().nullable(),
+    author:         manyToOne('user',     { column: 'author_id' }),
+    reviewedBy:     manyToOne('user',     { column: 'reviewed_by_id' }).nullable(),
+    category:       manyToOne('category', { column: 'category_id' }).nullable(),
+    comments:       oneToMany('comment'),
+    tags:           manyToMany('tag', { junction: 'post_tags' }),
+  }),
 
-const comment = entity('comment', 'comments', {
-  id:        uuid().primaryKey(),
-  body:      text(),
-  createdAt: timestamp().column('created_at'),
-  post:      manyToOne(() => post, { column: 'post_id' }),
-  author:    manyToOne(() => user, { column: 'author_id' }),
-  parent:    manyToOne(() => comment, { column: 'parent_id' }).nullable(),  // self-ref
+  comment: entity('comments', {
+    id:        uuid().primaryKey(),
+    body:      text(),
+    createdAt: timestamp().column('created_at'),
+    post:      manyToOne('post',    { column: 'post_id' }),
+    author:    manyToOne('user',    { column: 'author_id' }),
+    parent:    manyToOne('comment', { column: 'parent_id' }).nullable(),
+  }),
 })
 ```
 
@@ -336,4 +324,7 @@ What's exercised here:
 - **Every relation kind**: `manyToOne`, `oneToMany`, `manyToMany`, `oneToOne`.
 - **Two `manyToOne`s to the same target** (`post.author` and `post.reviewedBy`).
 - **Self-referencing `manyToOne`** (`comment.parent`).
-- **Circular entity references** (`user` ↔ `post`, `post` ↔ `comment`, etc.) resolved via the `() => target` thunks.
+
+<Aside type="tip">
+Want to bootstrap this from an existing OQL `.dm` file instead of writing it by hand? See [DM codegen](/oql-typed/guides/codegen/).
+</Aside>

@@ -57,16 +57,17 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 
 ## Typed function wrappers
 
-| Signature | OQL |
-|-----------|-----|
-| `lower(field)` / `upper(field)` | `lower(field)` / `upper(field)` |
-| `trim(field)` | `trim(field)` |
-| `length(field)` | `length(field)` |
-| `concat(...args)` | `concat(a, b, ...)` |
-| `coalesce(...args)` | `coalesce(a, b, ...)` |
-| `count(field)` | `count(field)` |
-| `sum(field)` / `avg(field)` | `sum(field)` / `avg(field)` |
-| `min(field)` / `max(field)` | `min(field)` / `max(field)` |
+| Signature | OQL | Notes |
+|-----------|-----|-------|
+| `lower(field)` / `upper(field)` | `lower(field)` / `upper(field)` | Propagates nullability |
+| `trim(field)` | `trim(field)` | Propagates nullability |
+| `length(field)` | `length(field)` | Propagates nullability |
+| `concat(...args)` | `concat(a, b, ...)` | PG `concat` — `STABLE`, not indexable |
+| `concatOp(...args)` | `(a \|\| b \|\| ...)` | PG `\|\|` — `IMMUTABLE` (indexable), but NULL-propagating |
+| `coalesce(...args)` | `coalesce(a, b, ...)` | Result non-null if any arg is typed non-null |
+| `count(field)` / `count('*')` | `count(field)` / `count(*)` | Always non-null |
+| `sum(field)` / `avg(field)` | `sum(field)` / `avg(field)` | Returns `number \| null` |
+| `min(field)` / `max(field)` | `min(field)` / `max(field)` | Returns `T \| null` |
 
 ## Ordering
 

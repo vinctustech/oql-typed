@@ -45,26 +45,63 @@ Common SQL functions have dedicated wrappers that infer the result type:
 
 ```typescript
 import {
-  lower, upper, trim, length, concat, coalesce,
+  lower, upper, trim, length, concat, concatOp, coalesce,
   count, sum, avg, min, max,
 } from '@vinctus/oql-typed'
 ```
 
-| Wrapper | Typical use |
-|---------|-------------|
-| `lower(f)`, `upper(f)`, `trim(f)` | Case-insensitive match on a field |
-| `length(f)` | Length of a string field |
-| `concat(...args)` | Build a composite value |
-| `coalesce(...args)` | First non-null of several expressions |
-| `count(f)`, `sum(f)`, `avg(f)` | Aggregates |
-| `min(f)`, `max(f)` | Min/max aggregates |
+| Wrapper | Result type | Notes |
+|---------|-------------|-------|
+| `lower(f)`, `upper(f)`, `trim(f)` | propagates `\| null` from input | NULL on NULL input |
+| `length(f)` | `number` (`\| null` if input nullable) | NULL on NULL input |
+| `concat(...args)` | `string` | PG's `concat()` — `STABLE`, **not indexable** |
+| `concatOp(...args)` | `string \| null` | Emits `(a \|\| b \|\| ...)` — `IMMUTABLE`, **indexable** |
+| `coalesce(...args)` | inferred (see below) | First non-null wins |
+| `count(f)`, `count('*')` | `number` | Always non-null |
+| `sum(f)`, `avg(f)` | `number \| null` | NULL on empty set |
+| `min(f)`, `max(f)` | `T \| null` | NULL on empty set |
 
 ```typescript
 ilike(lower(db.user.email), `%${term.toLowerCase()}%`)
 
-query(db, 'comment').select(alias('total', count('*')))
-query(db, 'post').select(alias('totalViews', sum(db.post.viewCount)))
-query(db, 'post').select(alias('avgReading', avg(db.post.readingTime)))
+db.comment.select(alias('total',       count('*')))
+db.comment.select(alias('replyCount',  count(db.comment.id)))
+db.post.select(alias('totalViews',     sum(db.post.viewCount)))
+db.post.select(alias('avgReading',     avg(db.post.readingTime)))
+```
+
+#### `concat` vs `concatOp` — pick the right one
+
+PostgreSQL's `concat(...)` function is marked `STABLE`, so an expression index built on it can't be used by the planner. The `||` operator is `IMMUTABLE` and **is** indexable — but it propagates `NULL` (if any operand is `NULL`, the result is `NULL`).
+
+Use `concatOp(...)` when you need the expression to match a PG expression index:
+
+```sql
+CREATE INDEX user_full_name_idx ON users ((first_name || ' ' || last_name));
+```
+
+```typescript
+import { concatOp, ilike, raw } from '@vinctus/oql-typed'
+
+// Hits user_full_name_idx
+ilike(concatOp(db.user.firstName, raw("' '"), db.user.lastName), '%john%')
+```
+
+Use `concat(...)` when you want NULL-safe behavior and don't need an index:
+
+```typescript
+import { concat } from '@vinctus/oql-typed'
+
+concat(db.user.firstName, ' ', db.user.lastName)   // 'John ' even if lastName is NULL
+```
+
+#### `coalesce(...)` nullability
+
+`coalesce` is overloaded: if **any** argument is non-null at the type level, the result is non-null. This matches the SQL semantics — the chain only collapses to NULL if every argument is NULL.
+
+```typescript
+coalesce(db.post.publishedAt, db.post.createdAt)   // Date (createdAt is non-null)
+coalesce(db.post.publishedAt, null)                // Date | null (all args nullable)
 ```
 
 ## `raw(text)` — literal OQL escape hatch
@@ -149,19 +186,19 @@ const rows = await query(db, 'comment')
 comment {id parentId: parent.id}
 ```
 
-## `aliasedRelation(label, relation, spec)` — aliased sub-collection
+## `aliasedRelation(label, relationName, spec)` — aliased sub-collection
 
-The same idea, but for a nested relation. The outer alias label and the typed inner projection both end up in the result type.
+The same idea, but for a nested relation. The relation is named by **string literal** (matching the field name on the entity). The outer alias label and the typed inner projection both end up in the result type.
 
 <Tabs syncKey="arel">
   <TabItem label="TypeScript">
     ```typescript
     import { aliasedRelation, eq } from '@vinctus/oql-typed'
 
-    query(db, 'post').select(
+    db.post.select(
       'id',
       'title',
-      aliasedRelation('topComments', db.post.comments, {
+      aliasedRelation('topComments', 'comments', {
         fields: ['id', 'body'],
         where: eq(db.comment.author.role, 'ADMIN'),
       }),
@@ -183,3 +220,11 @@ The same idea, but for a nested relation. The outer alias label and the typed in
     ```
   </TabItem>
 </Tabs>
+
+For aliased relations whose row shape can't be inferred (e.g. only `raw(...)` entries), pass an explicit `Shape` type argument:
+
+```typescript
+aliasedRelation<{ count: number }>('passengers', 'trips', {
+  fields: [raw('count: sum(seats)')],
+})
+```

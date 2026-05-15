@@ -57,12 +57,12 @@ const existing = await query(db, 'user')
 
 if (existing) {
   if (!existing.enabled) {
-    await update(oql, user, existing.id, { enabled: true })
+    await update(db, 'user', existing.id, { enabled: true })
   }
   return existing.id
 }
 
-return (await insert(oql, user, input)).id
+return (await insert(db, 'user', input)).id
 ```
 
 ```oql
@@ -184,28 +184,31 @@ post {
 } [EXISTS(tags [name = :p0])]
 ```
 
-## Threaded comment tree
+## Threaded comments — top level with author info
 
-Fetch top-level comments and any one level of replies in a single query:
+Fetch top-level comments (no parent) with author details in one query. For deeper trees, fetch flat and reconstruct in application code — OQL queries are well-suited for fixed-depth nesting, not arbitrary recursion.
 
 ```typescript
-import { query, aliasedRelation, eq, desc, ref, isNull } from '@vinctus/oql-typed'
+import { ref, isNull, desc } from '@vinctus/oql-typed'
 
-query(db, 'comment').select(
-  'id',
-  'body',
-  { author: ['firstName'] },
-  aliasedRelation('replies', db.comment.post, {
-    fields: ['id', 'body', { author: ['firstName'] }],
-    // filter replies to those whose parent is this comment — keep it simple
-    // with a separate query per depth level if you need deeper trees.
-  }),
-).where(isNull(ref(db.comment.parent)))
+db.comment
+  .select('id', 'body', 'createdAt', { author: ['firstName', 'lastName'] })
+  .where(and(
+    eq(db.comment.post, postId),
+    isNull(ref(db.comment.parent)),
+  ))
+  .orderBy(desc(db.comment.createdAt))
+  .many()
 ```
 
-<Aside type="tip">
-For arbitrary-depth trees, fetch flat and reconstruct in application code. OQL queries are well-suited for fixed-depth nesting.
-</Aside>
+```oql
+comment {
+  id
+  body
+  createdAt
+  author {firstName lastName}
+} [post.id = :p0 AND &parent IS NULL] <createdAt DESC>
+```
 
 ## Inspecting queries in tests
 

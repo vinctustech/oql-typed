@@ -17,53 +17,60 @@ In five minutes you'll have a typed schema, a working OQL instance, and your fir
 
 2. **Define your schema in TypeScript.**
 
-   The examples throughout these docs use a small blog domain: `user`, `post`, `category`, `tag`, `comment`.
+   The examples throughout these docs use a small blog domain: `user`, `post`, `category`, `tag`, `comment`. Wrap the whole thing in `defineSchema(...)` so TypeScript preserves the literal entity names.
 
    ```typescript
    // schema.ts
    import {
-     entity, uuid, text, integer, boolean, timestamp,
+     defineSchema, entity,
+     uuid, text, integer, boolean, timestamp,
      manyToOne, oneToMany, manyToMany, enumType,
    } from '@vinctus/oql-typed'
 
-   type UserRole = 'ADMIN' | 'AUTHOR' | 'READER'
+   export type UserRole = 'ADMIN' | 'AUTHOR' | 'READER'
+   export type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
-   export const user = entity('user', 'users', {
-     id:          uuid().primaryKey(),
-     email:       text(),
-     firstName:   text().column('first_name'),
-     lastName:    text().column('last_name'),
-     role:        enumType<UserRole>('UserRole', ['ADMIN', 'AUTHOR', 'READER']),
-     enabled:     boolean(),
-     lastLoginAt: timestamp().column('last_login_at').nullable(),
-     posts:       oneToMany(() => post),
-   })
+   export const schema = defineSchema({
+     user: entity('users', {
+       id:          uuid().primaryKey(),
+       email:       text(),
+       firstName:   text().column('first_name'),
+       lastName:    text().column('last_name'),
+       role:        enumType<UserRole>('UserRole', ['ADMIN', 'AUTHOR', 'READER']),
+       enabled:     boolean(),
+       lastLoginAt: timestamp().column('last_login_at').nullable(),
+       posts:       oneToMany('post'),
+     }),
 
-   type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
-
-   export const post = entity('post', 'posts', {
-     id:        uuid().primaryKey(),
-     title:     text(),
-     slug:      text(),
-     status:    enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
-     viewCount: integer().column('view_count'),
-     createdAt: timestamp().column('created_at'),
-     author:    manyToOne(() => user, { column: 'author_id' }),
+     post: entity('posts', {
+       id:        uuid().primaryKey(),
+       title:     text(),
+       slug:      text(),
+       status:    enumType<PostStatus>('PostStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED']),
+       viewCount: integer().column('view_count'),
+       createdAt: timestamp().column('created_at'),
+       author:    manyToOne('user', { column: 'author_id' }),
+     }),
    })
    ```
 
-3. **Generate the `.dm` string and instantiate OQL.**
+   The **entity name** (`'user'`, `'post'`) is the key in `defineSchema(...)`. Relations reference other entities by that same string literal — no thunks, no circular imports.
+
+3. **Instantiate OQL and wrap it.**
+
+   OQL itself runs off a `.dm` data-model string. The recommended workflow is to keep `schema.dm` alongside `schema.ts` and load it at startup. You can bootstrap `schema.ts` from `schema.dm` with the [`oql-typed-codegen` CLI](/oql-typed/guides/codegen/).
 
    ```typescript
    // db.ts
-   import { generateDM, typedOQL } from '@vinctus/oql-typed'
+   import { readFileSync } from 'node:fs'
+   import { typedOQL } from '@vinctus/oql-typed'
    import { OQL_PG } from '@vinctus/oql-pg'
-   import { user, post } from './schema.js'
+   import { schema } from './schema.js'
 
-   const dm = generateDM(user, post)
+   const dm = readFileSync(new URL('./schema.dm', import.meta.url), 'utf8')
    const oqlInstance = new OQL_PG(dm, host, port, database, username, password)
 
-   export const db = typedOQL(oqlInstance, { user, post })
+   export const db = typedOQL(oqlInstance, schema)
    ```
 
 4. **Write typed queries.**
@@ -84,8 +91,8 @@ In five minutes you'll have a typed schema, a working OQL instance, and your fir
    <Tabs>
      <TabItem label="✗ Typo in a field">
        ```typescript
-       query(db, 'user').select('id', 'fistName')
-       //                              ^^^^^^^^
+       db.user.select('id', 'fistName')
+       //                    ^^^^^^^^
        // Type error: Argument not assignable to keyof user fields
        ```
      </TabItem>
@@ -105,7 +112,7 @@ In five minutes you'll have a typed schema, a working OQL instance, and your fir
      </TabItem>
      <TabItem label="✗ Unselected field">
        ```typescript
-       const u = await query(db, 'user').select('id').one()
+       const u = await db.user.select('id').one()
        u?.firstName
        //  ^^^^^^^^^
        // Type error: 'firstName' not in projection
