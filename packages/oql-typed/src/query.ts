@@ -113,7 +113,15 @@ class QueryBuilder<S extends Schema, Name extends keyof S, Result> {
     return this
   }
 
-  findById(id: PKType<S, Name>): Promise<Result | undefined> {
+  findOneBy<T>(field: FieldRef<T>, value: NoInfer<T>): Promise<Result | undefined>
+  findOneBy(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): Promise<Result | undefined>
+  findOneBy(field: any, value: any): Promise<Result | undefined> {
+    const expr = eq(field, value)
+    this.filterExpr = this.filterExpr ? and(this.filterExpr, expr) : and(expr)
+    return this.one()
+  }
+
+  findOneById(id: PKType<S, Name>): Promise<Result | undefined> {
     const pkName = findPrimaryKeyColumn(this.schema, this.entityName)
     const expr: FilterExpr = {
       __filterExpr: true,
@@ -196,7 +204,9 @@ export interface QueryStarter<S extends Schema, Name extends keyof S> {
   findBy(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   findIn<T>(field: FieldRef<T>, values: NoInfer<T>[]): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   findIn(field: RelationFieldRef<Schema, any, 'manyToOne'>, values: Array<string | number>): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
-  findById(id: PKType<S, Name>): Promise<InferDefaultProjection<S, Name> | undefined>
+  findOneBy<T>(field: FieldRef<T>, value: NoInfer<T>): Promise<InferDefaultProjection<S, Name> | undefined>
+  findOneBy(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): Promise<InferDefaultProjection<S, Name> | undefined>
+  findOneById(id: PKType<S, Name>): Promise<InferDefaultProjection<S, Name> | undefined>
   orderBy(...orders: OrderExpr[]): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   limit(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
   offset(n: number): QueryBuilder<S, Name, InferDefaultProjection<S, Name>>
@@ -226,8 +236,11 @@ function createStarter<S extends Schema, Name extends keyof S>(
     findIn(field: any, values: any[]) {
       return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).findIn(field, values)
     },
-    findById(id: any) {
-      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).findById(id)
+    findOneBy(field: any, value: any) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).findOneBy(field, value)
+    },
+    findOneById(id: any) {
+      return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).findOneById(id)
     },
     orderBy(...orders) {
       return new QueryBuilder<S, Name, Default>(oql, schema, entityName, undefined).orderBy(...orders)

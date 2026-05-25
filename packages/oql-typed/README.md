@@ -85,18 +85,24 @@ import { eq, and, inList, ilike, desc } from '@vinctus/oql-typed'
 // db.user.select(...) is shorthand for query(db, 'user').select(...).
 const result = await db.user
   .select('id', 'firstName', 'lastName', { account: ['id', 'name'] })
-  .findById(userId)
+  .findOneById(userId)
 // => { id: string, firstName: string, lastName: string, account: { id: string, name: string } } | undefined
 
 // No selection — returns all scalar fields
 const accounts = await db.account.many()
 // => { id: string, name: string, enabled: boolean, plan: string }[]
 
-// Common shortcuts: .findBy() (single eq), .findIn() (IN list) — both chainable AND
+// Naming: methods without "One" are chainable filters; methods with "One" auto-terminate
+// .findBy()      — chainable sugar for .where(eq(...))
+// .findIn()      — chainable sugar for .where(inList(...))
+// .findOneBy()   — terminal sugar for .where(eq(...)).one()
+// .findOneById() — terminal PK lookup
 const drivers = await db.user
   .findBy(db.user.role, 'DRIVER')
   .findIn(db.user.enabled, [true])
   .many()
+
+const alice = await db.user.findOneBy(db.user.email, 'alice@example.com')
 ```
 
 ## What the compiler catches
@@ -250,7 +256,8 @@ query(db, 'user')           // or just: db.user
   .one()                    // → T | undefined
   .many()                   // → T[]
   .count()                  // → number
-  .findById(id)             // → T | undefined (auto-terminates with .one())
+  .findOneBy(col, v)        // → T | undefined (terminal — auto-runs .one())
+  .findOneById(id)          // → T | undefined (terminal — auto-runs .one())
   .toOQL()                  // → { queryStr, params } — no execution
 ```
 

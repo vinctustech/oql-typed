@@ -72,7 +72,7 @@ Every relation supports `.nullable()` for optional / nullable cases.
 
 ### `typedOQL(oqlInstance, schema)`
 
-Wraps an `OQLInstance` and returns a `DB<S>` whose entity handles (`db.user`, `db.post`, ...) carry typed field refs **and** the full set of query starter methods (`select`, `where`, `findBy`, `findIn`, `findById`, `orderBy`, `limit`, `offset`, `one`, `many`, `count`, `toOQL`).
+Wraps an `OQLInstance` and returns a `DB<S>` whose entity handles (`db.user`, `db.post`, ...) carry typed field refs **and** the full set of query starter methods (`select`, `where`, `findBy`, `findIn`, `findOneBy`, `findOneById`, `orderBy`, `limit`, `offset`, `one`, `many`, `count`, `toOQL`).
 
 ```typescript
 const db = typedOQL(oqlInstance, schema)
@@ -82,7 +82,7 @@ db.post.author            // RelationFieldRef — manyToOne
 db.post.author.email      // FieldRef<string>   (dotted path)
 
 db.post.select('id').many()                      // query starter on the handle
-db.post.findById(id)                             // ditto
+db.post.findOneById(id)                          // ditto
 ```
 
 ## DM codegen

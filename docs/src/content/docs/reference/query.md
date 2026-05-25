@@ -19,7 +19,8 @@ query(db, 'user')
   .one()               // → T | undefined
   .many()              // → T[]
   .count()             // → number
-  .findById(id)        // → T | undefined  (terminal — auto-runs .one())
+  .findOneBy(col, v)   // → T | undefined  (terminal — auto-runs .one())
+  .findOneById(id)     // → T | undefined  (terminal — auto-runs .one())
   .toOQL()             // → { queryStr, params } — no execution
 ```
 
@@ -66,16 +67,27 @@ db.post.findIn(db.post.status, ['PUBLISHED', 'DRAFT']).many()
 db.trip.findBy(db.trip.store, storeId).findIn(db.trip.state, ['CONFIRMED']).many()
 ```
 
-### `.findById(id)` — terminal
+### `.findOneBy(field, value)` — terminal
+
+Sugar for `.where(eq(field, value)).one()`. **Terminates the chain** — returns `Promise<T | undefined>`. Same overloads as `.findBy()` (scalar `FieldRef<T>` or `manyToOne` `RelationFieldRef`).
+
+```typescript
+const u = await db.user.findOneBy(db.user.email, 'a@b.com')
+const stub = await db.user.select('id', 'firstName').findOneBy(db.user.email, 'a@b.com')
+```
+
+Like all single-row terminals it throws if more than one row matches — pre-narrow with `.findBy()` if the column isn't unique.
+
+### `.findOneById(id)` — terminal
 
 Sugar for `.where(eq(<entity>.id, id)).one()`. **Terminates the chain** — returns `Promise<T | undefined>`. The PK column is auto-detected from the schema; the `id` argument is typed via `PKType<S, Name>`.
 
 ```typescript
-const u = await db.user.findById(userId)
-const stub = await db.user.select('id', 'firstName').findById(userId)
+const u = await db.user.findOneById(userId)
+const stub = await db.user.select('id', 'firstName').findOneById(userId)
 ```
 
-Not available on `CondQueryBuilder` (use `findBy` + `.one()` if you need to combine with `.cond()`).
+The terminal shortcuts (`.findOneBy()`, `.findOneById()`) are not available on `CondQueryBuilder` (use `findBy` + `.one()` if you need to combine with `.cond()`).
 
 ## `queryBuilder(db, entityName)`
 
@@ -93,7 +105,7 @@ queryBuilder(db, 'user')
   .cond(search, ilike(db.user.firstName, `%${search}%`))
 ```
 
-`queryBuilder` also supports `.findBy()` and `.findIn()` — both append to the filter list (no overwrite semantics). `.findById()` is not available here.
+`queryBuilder` also supports `.findBy()` and `.findIn()` — both append to the filter list (no overwrite semantics). The terminal shortcuts (`.findOneBy()`, `.findOneById()`) are not available here.
 
 ## Mutations
 

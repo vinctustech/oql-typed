@@ -31,7 +31,7 @@ const db = typedOQL(oql, { user })
 const active = await db.user.select('id', 'email').findBy(db.user.enabled, true).many()
 // => { id: string, email: string }[]
 
-const one = await db.user.findById(userId)
+const one = await db.user.findOneById(userId)
 // => { id, email, enabled } | undefined
 ```
 

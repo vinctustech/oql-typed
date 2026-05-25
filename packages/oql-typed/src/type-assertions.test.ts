@@ -564,53 +564,117 @@ describe('type: findIn negatives', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// findById — PK lookup sugar, auto-terminates
+// findOneBy — single-row sugar for .findBy(...).one()
 // ═══════════════════════════════════════════════════════════════════
 
-describe('type: findById', () => {
+describe('type: findOneBy', () => {
   it('placeholder', () => assert.ok(true))
 
-  // --- starter findById returns Promise<DefaultProjection | undefined> ---
-  async function _starterFindById() {
-    const r = await db.user.findById(ID.u1)
+  // --- starter findOneBy on scalar returns Promise<DefaultProjection | undefined> ---
+  async function _starterFindOneByScalar() {
+    const r = await db.user.findOneBy(db.user.enabled, true)
+    void r?.firstName
+    void r?.email
+  }
+
+  // --- starter findOneBy on enum ---
+  async function _starterFindOneByEnum() {
+    const r = await query(db, 'trip').findOneBy(db.trip.state, 'CONFIRMED')
+    void r?.state
+  }
+
+  // --- findOneBy on manyToOne FK (auto-resolves to .id) ---
+  async function _findOneByFK() {
+    const r = await query(db, 'trip').findOneBy(db.trip.store, ID.s1)
+    void r?.id
+  }
+
+  // --- findOneBy on dotted path ---
+  async function _findOneByDotted() {
+    const r = await query(db, 'trip').findOneBy(db.trip.store.account.id, ID.a1)
+    void r?.id
+  }
+
+  // --- findOneBy after select() narrows the result shape ---
+  async function _findOneByNarrowed() {
+    const r = await db.user.select('id', 'firstName').findOneBy(db.user.id, ID.u1)
+    void r?.firstName
+  }
+})
+
+describe('type: findOneBy negatives', () => {
+  it('placeholder', () => assert.ok(true))
+
+  async function _wrongScalarValueType() {
+    // @ts-expect-error — enabled is boolean, not string
+    await query(db, 'user').findOneBy(db.user.enabled, 'yes')
+  }
+
+  async function _wrongEnumValue() {
+    // @ts-expect-error — 'SUPERADMIN' is not a valid role
+    await query(db, 'user').findOneBy(db.user.role, 'SUPERADMIN')
+  }
+
+  async function _wrongFKValueType() {
+    // @ts-expect-error — FK takes the PK type (string), not boolean
+    await query(db, 'trip').findOneBy(db.trip.store, true)
+  }
+
+  async function _narrowedShapeBlocksOtherFields() {
+    const r = await db.user.select('id').findOneBy(db.user.id, ID.u1)
+    // @ts-expect-error — firstName is not in the projected shape
+    void r?.firstName
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// findOneById — PK lookup sugar, auto-terminates
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: findOneById', () => {
+  it('placeholder', () => assert.ok(true))
+
+  // --- starter findOneById returns Promise<DefaultProjection | undefined> ---
+  async function _starterFindOneById() {
+    const r = await db.user.findOneById(ID.u1)
     // r is DefaultProjection<'user'> | undefined
     void r?.firstName
     void r?.email
   }
 
-  // --- findById after select() narrows the result shape ---
-  async function _findByIdNarrowed() {
-    const r = await db.user.select('id', 'firstName').findById(ID.u1)
+  // --- findOneById after select() narrows the result shape ---
+  async function _findOneByIdNarrowed() {
+    const r = await db.user.select('id', 'firstName').findOneById(ID.u1)
     void r?.firstName
   }
 
   // --- query() entry point form ---
-  async function _queryFindById() {
-    const r = await query(db, 'trip').findById(ID.t1)
+  async function _queryFindOneById() {
+    const r = await query(db, 'trip').findOneById(ID.t1)
     void r?.state
   }
 
-  // --- findById accepts the PK type (string for uuid) ---
-  async function _findByIdString() {
-    await query(db, 'user').findById('any-string-uuid')
+  // --- findOneById accepts the PK type (string for uuid) ---
+  async function _findOneByIdString() {
+    await query(db, 'user').findOneById('any-string-uuid')
   }
 })
 
-describe('type: findById negatives', () => {
+describe('type: findOneById negatives', () => {
   it('placeholder', () => assert.ok(true))
 
   async function _wrongIdType() {
     // @ts-expect-error — id is string (uuid), not number
-    await query(db, 'user').findById(42)
+    await query(db, 'user').findOneById(42)
   }
 
   async function _wrongIdTypeViaStarter() {
     // @ts-expect-error — id is string (uuid), not boolean
-    await db.user.findById(true)
+    await db.user.findOneById(true)
   }
 
   async function _narrowedShapeBlocksOtherFields() {
-    const r = await db.user.select('id').findById(ID.u1)
+    const r = await db.user.select('id').findOneById(ID.u1)
     // @ts-expect-error — firstName is not in the projected shape
     void r?.firstName
   }

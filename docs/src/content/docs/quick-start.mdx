@@ -78,10 +78,10 @@ In five minutes you'll have a typed schema, a working OQL instance, and your fir
    ```typescript
    import { db } from './db.js'
 
-   // PK lookup with .findById — auto-terminates with .one()
+   // PK lookup with .findOneById — auto-terminates with .one()
    const u = await db.user
      .select('id', 'firstName', { posts: ['id', 'title'] })
-     .findById(userId)
+     .findOneById(userId)
    // u is typed as:
    //   { id: string, firstName: string, posts: { id: string, title: string }[] } | undefined
    ```

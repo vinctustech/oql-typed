@@ -711,52 +711,109 @@ describe('runtime: findIn', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// findById — PK lookup sugar, auto-terminates with .one()
+// findOneBy — single-row sugar for .findBy(...).one()
 // ═══════════════════════════════════════════════════════════════════
 
-describe('runtime: findById', () => {
-  it('starter findById returns matching row', async () => {
-    const r = await db.user.findById(ID.u1)
+describe('runtime: findOneBy', () => {
+  it('starter findOneBy returns matching row', async () => {
+    const r = await db.user.findOneBy(db.user.id, ID.u1)
     assert.ok(r)
     assert.equal(r.id, ID.u1)
     assert.equal(r.firstName, 'Alice')
   })
 
-  it('starter findById returns undefined on no match', async () => {
-    const r = await db.user.findById('u0000000-0000-4000-8000-000000000000')
+  it('starter findOneBy returns undefined on no match', async () => {
+    const r = await db.user.findOneBy(db.user.firstName, 'NobodyByThisName')
     assert.equal(r, undefined)
   })
 
-  it('findById after select() projects narrow shape', async () => {
-    const r = await db.user.select('id', 'firstName').findById(ID.u1)
+  it('findOneBy after select() projects narrow shape', async () => {
+    const r = await db.user.select('id', 'firstName').findOneBy(db.user.id, ID.u1)
     assert.ok(r)
     assert.equal(r.firstName, 'Alice')
     // @ts-expect-error — email is not in the projected shape
     void r.email
   })
 
-  it('findById via query() entry point', async () => {
-    const r = await query(db, 'trip').findById(ID.t1)
+  it('findOneBy via query() entry point', async () => {
+    const r = await query(db, 'trip').findOneBy(db.trip.id, ID.t1)
     assert.ok(r)
     assert.equal(r.id, ID.t1)
   })
 
-  it('findById generates same OQL as where(eq(table.id, X)).one()', () => {
-    const a = query(db, 'user').select('id').findBy(db.user.id, ID.u1).toOQL()
-    // We can't toOQL() directly on findById since it returns a Promise — verify by inspecting params.
-    const expected = query(db, 'user').select('id').where(eq(db.user.id, ID.u1)).toOQL()
-    assert.equal(a.queryStr, expected.queryStr)
-  })
-
-  it('findById ANDs with prior findBy filter', async () => {
-    const r = await query(db, 'user').findBy(db.user.enabled, true).findById(ID.u1)
+  it('findOneBy on unique scalar (email)', async () => {
+    const r = await db.user.findOneBy(db.user.email, 'alice@example.com')
     assert.ok(r)
     assert.equal(r.id, ID.u1)
   })
 
-  it('findById ANDs with prior findBy filter that excludes the row', async () => {
+  it('findOneBy on manyToOne FK auto-resolves to .id (after narrowing to one row)', async () => {
+    // multiple trips on s1; pre-narrow with another findBy so the FK lookup hits one row
+    const r = await query(db, 'trip').findBy(db.trip.id, ID.t1).findOneBy(db.trip.store, ID.s1)
+    assert.ok(r)
+    assert.equal(r.id, ID.t1)
+  })
+
+  it('findOneBy ANDs with prior findBy filter', async () => {
+    const r = await query(db, 'user').findBy(db.user.enabled, true).findOneBy(db.user.id, ID.u1)
+    assert.ok(r)
+    assert.equal(r.id, ID.u1)
+  })
+
+  it('findOneBy ANDs with prior findBy filter that excludes the row', async () => {
+    // u1's role is OWNER; pre-filtering to DRIVER must hide it from findOneBy
+    const r = await query(db, 'user').findBy(db.user.role, 'DRIVER').findOneBy(db.user.id, ID.u1)
+    assert.equal(r, undefined)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// findOneById — PK lookup sugar, auto-terminates with .one()
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: findOneById', () => {
+  it('starter findOneById returns matching row', async () => {
+    const r = await db.user.findOneById(ID.u1)
+    assert.ok(r)
+    assert.equal(r.id, ID.u1)
+    assert.equal(r.firstName, 'Alice')
+  })
+
+  it('starter findOneById returns undefined on no match', async () => {
+    const r = await db.user.findOneById('u0000000-0000-4000-8000-000000000000')
+    assert.equal(r, undefined)
+  })
+
+  it('findOneById after select() projects narrow shape', async () => {
+    const r = await db.user.select('id', 'firstName').findOneById(ID.u1)
+    assert.ok(r)
+    assert.equal(r.firstName, 'Alice')
+    // @ts-expect-error — email is not in the projected shape
+    void r.email
+  })
+
+  it('findOneById via query() entry point', async () => {
+    const r = await query(db, 'trip').findOneById(ID.t1)
+    assert.ok(r)
+    assert.equal(r.id, ID.t1)
+  })
+
+  it('findOneById generates same OQL as where(eq(table.id, X)).one()', () => {
+    const a = query(db, 'user').select('id').findBy(db.user.id, ID.u1).toOQL()
+    // We can't toOQL() directly on findOneById since it returns a Promise — verify by inspecting params.
+    const expected = query(db, 'user').select('id').where(eq(db.user.id, ID.u1)).toOQL()
+    assert.equal(a.queryStr, expected.queryStr)
+  })
+
+  it('findOneById ANDs with prior findBy filter', async () => {
+    const r = await query(db, 'user').findBy(db.user.enabled, true).findOneById(ID.u1)
+    assert.ok(r)
+    assert.equal(r.id, ID.u1)
+  })
+
+  it('findOneById ANDs with prior findBy filter that excludes the row', async () => {
     // u1's role is OWNER; if we filter to DRIVER first, the id lookup must miss.
-    const r = await query(db, 'user').findBy(db.user.role, 'DRIVER').findById(ID.u1)
+    const r = await query(db, 'user').findBy(db.user.role, 'DRIVER').findOneById(ID.u1)
     assert.equal(r, undefined)
   })
 })
