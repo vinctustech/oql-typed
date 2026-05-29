@@ -104,6 +104,36 @@ coalesce(db.post.publishedAt, db.post.createdAt)   // Date (createdAt is non-nul
 coalesce(db.post.publishedAt, null)                // Date | null (all args nullable)
 ```
 
+## `currentTimestamp()` — the database clock
+
+`currentTimestamp()` is a typed expression that emits `CURRENT_TIMESTAMP`. Its main use is comparing a timestamp column against "now" — pass it as the **value** side of a comparison operator (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`):
+
+<Tabs syncKey="now">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { currentTimestamp, lte, gt } from '@vinctus/oql-typed'
+
+    // Accounts whose trial has ended (trialEndAt is in the past)
+    db.account.where(lte(db.account.trialEndAt, currentTimestamp()))
+
+    // Trips scheduled in the future
+    db.trip.where(gt(db.trip.scheduledAt, currentTimestamp()))
+    ```
+  </TabItem>
+  <TabItem label="Generated OQL">
+    ```oql
+    account [trialEndAt <= CURRENT_TIMESTAMP]
+    trip [scheduledAt > CURRENT_TIMESTAMP]
+    ```
+  </TabItem>
+</Tabs>
+
+The expression is emitted inline — it is **not** parameterized, so the database evaluates the clock at query time. Because it resolves to a `Date`, it only type-checks against timestamp columns; comparing it to a string, number, or boolean field is a compile error.
+
+<Aside type="note">
+Comparison operators accept an `OQLExpr` on the value side, not just a literal. `currentTimestamp()` is the common case, but any expression of the field's type works there too.
+</Aside>
+
 ## `raw(text)` — literal OQL escape hatch
 
 When a construct isn't modelled, emit it literally.

@@ -13,8 +13,8 @@ import { typedOQL } from './db.js'
 import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
-import { eq, ne, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { fn, raw, ref, alias, aliasedRelation } from './expressions.js'
+import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
+import { fn, raw, ref, alias, aliasedRelation, currentTimestamp } from './expressions.js'
 import { sum, avg, min, max, concatOp } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
@@ -441,6 +441,45 @@ describe('runtime: filters', () => {
       )
       .many()
     assert.equal(r.length, 2) // Alice (firstName), Bob (lastName)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// SC-1501 — currentTimestamp() lets a column be compared to the DB clock.
+// Emits CURRENT_TIMESTAMP inline (no param) and runs against petradb.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: currentTimestamp() comparisons (SC-1501)', () => {
+  it('emits CURRENT_TIMESTAMP inline without a param', () => {
+    const { queryStr, params } = query(db, 'account')
+      .where(lte(db.account.createdAt, currentTimestamp()))
+      .toOQL()
+    assert.match(queryStr, /createdAt <= CURRENT_TIMESTAMP/)
+    assert.equal(Object.keys(params).length, 0)
+  })
+
+  it('filters rows against the database clock', async () => {
+    // a1 was created 2024-01-01 — in the past, so <= now matches, > now does not.
+    assert.equal(
+      await query(db, 'account').where(lte(db.account.createdAt, currentTimestamp())).count(),
+      1,
+    )
+    assert.equal(
+      await query(db, 'account').where(gt(db.account.createdAt, currentTimestamp())).count(),
+      0,
+    )
+  })
+
+  it('works on a nullable timestamp column (NULL rows excluded)', async () => {
+    // u1 + u3 have past lastLoginAt; u2 is NULL and is excluded by the comparison.
+    assert.equal(
+      await query(db, 'user').where(lte(db.user.lastLoginAt, currentTimestamp())).count(),
+      2,
+    )
+    assert.equal(
+      await query(db, 'user').where(gt(db.user.lastLoginAt, currentTimestamp())).count(),
+      0,
+    )
   })
 })
 

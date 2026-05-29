@@ -5,7 +5,7 @@ description: Every filter operator, with an example and the OQL it produces.
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
-All operators take a typed field reference (obtained from `db.entity.field`) and produce a `FilterExpr`. Values are always parameterized — you never build SQL strings by hand.
+All operators take a typed field reference (obtained from `db.entity.field`) and produce a `FilterExpr`. Literal values are parameterized — you never build SQL strings by hand. Comparison operators can also take an [expression](/oql-typed/guides/expressions/) on the value side (e.g. `currentTimestamp()`), which is emitted inline.
 
 ## Comparison
 
@@ -45,6 +45,27 @@ All operators take a typed field reference (obtained from `db.entity.field`) and
 <Aside type="note">
 Comparison operators use `NoInfer<T>` to pin the value type to the field's type. `eq(db.user.role, 'SUPERADMIN')` is a compile error if `'SUPERADMIN'` is not in the role enum.
 </Aside>
+
+### Comparing against an expression
+
+The value side of a comparison also accepts an `OQLExpr` of the field's type, not just a literal. The common case is comparing a timestamp column to the database clock with [`currentTimestamp()`](/oql-typed/guides/expressions/#currenttimestamp--the-database-clock):
+
+<Tabs syncKey="op-expr">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { lte, gt, currentTimestamp } from '@vinctus/oql-typed'
+
+    lte(db.account.trialEndAt, currentTimestamp())   // trial has ended
+    gt(db.trip.scheduledAt, currentTimestamp())      // scheduled in the future
+    ```
+  </TabItem>
+  <TabItem label="OQL">
+    ```oql
+    trialEndAt <= CURRENT_TIMESTAMP
+    scheduledAt > CURRENT_TIMESTAMP
+    ```
+  </TabItem>
+</Tabs>
 
 <Aside type="tip">
 For the most common uses of `eq` and `inList` — single-column lookups inside a `where` — see the [`.findBy()` / `.findIn()` / `.findOneBy()` / `.findOneById()` shortcuts](/oql-typed/guides/queries/#lookup-shortcuts), which drop the `.where(eq(...))` wrapping.

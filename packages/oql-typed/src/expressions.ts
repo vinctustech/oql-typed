@@ -42,6 +42,28 @@ export function fn<T = unknown>(name: string, ...args: FnArg[]): OQLExpr<T> & Fi
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// currentTimestamp() — the database's current time (CURRENT_TIMESTAMP).
+//
+// Usable as the value side of a comparison operator, so a column can be
+// compared against "now":
+//   lte(db.account.trialEndAt, currentTimestamp())  →  trialEndAt <= CURRENT_TIMESTAMP
+// ══════════════════════════════════════════════════════════════════════
+
+export function currentTimestamp(): OQLExpr<Date> & FieldRef<Date> {
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined,
+    entityName: '',
+    fieldName: 'CURRENT_TIMESTAMP',
+    builder: null,
+    toOQL(_ctx: FilterContext): string {
+      return 'CURRENT_TIMESTAMP'
+    },
+  } as any
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // raw(oql) — escape hatch for anything without a typed wrapper
 // ══════════════════════════════════════════════════════════════════════
 

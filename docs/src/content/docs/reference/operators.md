@@ -14,7 +14,7 @@ description: Signatures for every operator and expression helper.
 | `lt(field, value)` | `field < :p` |
 | `lte(field, value)` | `field <= :p` |
 
-Value type uses `NoInfer<T>` to prevent literal widening — it must match the field's type exactly.
+Value type uses `NoInfer<T>` to prevent literal widening — it must match the field's type exactly. The value may also be an `OQLExpr<T>` (e.g. `currentTimestamp()`), which is emitted inline rather than parameterized.
 
 ## Logical
 
@@ -49,6 +49,7 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 | Signature | OQL |
 |-----------|-----|
 | `fn(name, ...args)` | `name(a, b, ...)` |
+| `currentTimestamp()` | `CURRENT_TIMESTAMP` |
 | `raw(text)` | literal `text` |
 | `ref(m2oRel)` | `&relationName` |
 | `subquery<T>(rel, projection, filter?)` | `(rel {projection} [filter])` |

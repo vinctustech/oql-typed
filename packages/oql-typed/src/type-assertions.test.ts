@@ -16,8 +16,8 @@ import { typedOQL } from './db.js'
 import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
-import { eq, ne, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { alias, aliasedRelation, fn, raw, ref, subquery } from './expressions.js'
+import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
+import { alias, aliasedRelation, currentTimestamp, fn, raw, ref, subquery } from './expressions.js'
 import type { FieldRef, Prettify } from './types.js'
 
 import { schema, ID, type Role, type TripState } from './test-schema.js'
@@ -846,5 +846,39 @@ describe('type: undefined select args do not pollute result type', () => {
     type _ = AssertTrue<
       AssertEqual<typeof r, { id: string; firstName: string; email: string } | undefined>
     >
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// currentTimestamp() — comparing a timestamp column to the DB clock (SC-1501)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: currentTimestamp() comparisons', () => {
+  it('placeholder (real assertions at type level)', () => assert.ok(true))
+
+  function _ok() {
+    // Non-null timestamp column accepts the expression on the value side.
+    eq(db.account.createdAt, currentTimestamp())
+    gt(db.account.createdAt, currentTimestamp())
+    gte(db.account.createdAt, currentTimestamp())
+    lt(db.account.createdAt, currentTimestamp())
+    lte(db.account.createdAt, currentTimestamp())
+    ne(db.account.createdAt, currentTimestamp())
+
+    // Nullable timestamp column also accepts it (Date assignable to Date | null).
+    lte(db.user.lastLoginAt, currentTimestamp())
+    gt(db.user.lastLoginAt, currentTimestamp())
+
+    // The plain-literal overload still works alongside it.
+    gte(db.account.createdAt, new Date())
+  }
+
+  function _bad() {
+    // @ts-expect-error — currentTimestamp() is a Date expr, not valid for a string field
+    eq(db.user.email, currentTimestamp())
+    // @ts-expect-error — not valid for a number field
+    gt(db.vehicle.seats, currentTimestamp())
+    // @ts-expect-error — not valid for a boolean field
+    eq(db.account.enabled, currentTimestamp())
   }
 })
