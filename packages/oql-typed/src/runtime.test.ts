@@ -458,15 +458,65 @@ describe('runtime: currentTimestamp() comparisons (SC-1501)', () => {
     assert.equal(Object.keys(params).length, 0)
   })
 
-  it('filters rows against the database clock', async () => {
-    // a1 was created 2024-01-01 — in the past, so <= now matches, > now does not.
-    assert.equal(
-      await query(db, 'account').where(lte(db.account.createdAt, currentTimestamp())).count(),
-      1,
+  it('CURRENT_TIMESTAMP resolves to the real wall-clock time', async () => {
+    // Bracket the query with JS clock reads. CURRENT_TIMESTAMP is evaluated
+    // somewhere inside that window, so it must land within [before, after]
+    // (a couple ms of slack covers sub-millisecond truncation). Requires
+    // @vinctus/oql-petradb >= 1.4.1-alpha.4, which fixed the timestamp
+    // timezone shift in PetraDBResultSet.unpack.
+    const before = Date.now()
+    const r = await query(db, 'account')
+      .select(alias('dbNow', currentTimestamp()))
+      .where(eq(db.account.id, ID.a1))
+      .one()
+    const after = Date.now()
+    assert.ok(r)
+    const ms = new Date(r.dbNow).getTime()
+    assert.ok(
+      ms >= before - 2 && ms <= after + 2,
+      `CURRENT_TIMESTAMP ${new Date(ms).toISOString()} not within ` +
+        `[${new Date(before - 2).toISOString()}, ${new Date(after + 2).toISOString()}]`,
     )
-    assert.equal(
-      await query(db, 'account').where(gt(db.account.createdAt, currentTimestamp())).count(),
-      0,
+  })
+
+  it('filters rows against the database clock — now falls between past and future', async () => {
+    // Seed one clearly-past and one clearly-future row so "now" is strictly
+    // between them. This is deterministic for any real clock in (2000, 2999)
+    // and proves CURRENT_TIMESTAMP is genuinely the current time (not a fixed
+    // constant) AND that both comparison directions resolve correctly.
+    await insert(db, 'account', {
+      id: 'a0000000-0000-4000-8000-00000000ec01',
+      name: 'sc1501-past',
+      enabled: true,
+      plan: 'free',
+      createdAt: new Date('2000-01-01T00:00:00Z'),
+    })
+    await insert(db, 'account', {
+      id: 'a0000000-0000-4000-8000-00000000ec02',
+      name: 'sc1501-future',
+      enabled: true,
+      plan: 'free',
+      createdAt: new Date('2999-01-01T00:00:00Z'),
+    })
+
+    // Scope to our two rows by name so the assertion is independent of any
+    // other accounts seeded or inserted by other tests.
+    const ours = inList(db.account.name, ['sc1501-past', 'sc1501-future'])
+
+    const past = await query(db, 'account')
+      .where(and(ours, lte(db.account.createdAt, currentTimestamp())))
+      .many()
+    assert.deepEqual(
+      past.map((r) => r.name),
+      ['sc1501-past'],
+    )
+
+    const future = await query(db, 'account')
+      .where(and(ours, gt(db.account.createdAt, currentTimestamp())))
+      .many()
+    assert.deepEqual(
+      future.map((r) => r.name),
+      ['sc1501-future'],
     )
   })
 
