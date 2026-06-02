@@ -131,7 +131,7 @@ export type InferAllScalars<D> = Prettify<{
 // Projection argument types (what .select() accepts)
 // ══════════════════════════════════════════════════════════════════════
 
-// An OQL expression (from raw(), fn(), alias(), subquery()) can appear as a projection arg
+// An OQL expression (from fn(), alias(), subquery()) can appear as a projection arg
 export interface OQLProjectionArg {
   readonly __oqlExpr: true
   readonly _projectionType?: Record<string, unknown>

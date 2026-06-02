@@ -14,7 +14,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { fn, raw, ref, alias, aliasedRelation, currentTimestamp } from './expressions.js'
+import { fn, ref, alias, aliasedRelation, currentTimestamp } from './expressions.js'
 import { sum, avg, min, max, concatOp } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
@@ -272,7 +272,7 @@ describe('runtime: projections', () => {
     const r = await query(db, 'vehicle')
       .select('id', 'make', {
         trips: {
-          fields: [raw('count: sum(seats)')],
+          fields: [alias('count', sum(db.trip.seats))],
           where: and(ne(db.trip.state, 'COMPLETED'), ne(db.trip.state, 'CANCELLED')),
         },
       })
@@ -291,7 +291,7 @@ describe('runtime: projections', () => {
         'id',
         'make',
         aliasedRelation<{ count: number }>('passengers', 'trips', {
-          fields: [raw('count: sum(seats)')],
+          fields: [alias('count', sum(db.trip.seats))],
           where: and(ne(db.trip.state, 'COMPLETED'), ne(db.trip.state, 'CANCELLED')),
         }),
       )
@@ -308,13 +308,13 @@ describe('runtime: projections', () => {
       .select(
         'id',
         aliasedRelation<{ count: number }>('passengers', 'trips', {
-          fields: [raw('count: sum(seats)')],
+          fields: [alias('count', sum(db.trip.seats))],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
       )
       .where(eq(db.vehicle.id, ID.v1))
       .toOQL()
-    assert.ok(queryStr.includes('passengers: trips {count: sum(seats)}'))
+    assert.ok(queryStr.includes('passengers: trips {count: (sum(seats))}'))
     assert.ok(queryStr.includes('[state != :p0]'))
   })
 
@@ -410,7 +410,7 @@ describe('runtime: filters', () => {
 
   it('concat() ILIKE for search', async () => {
     const r = await query(db, 'customer')
-      .where(ilike(fn<string>('concat', db.customer.firstName, raw("' '"), db.customer.lastName), '%Dan%'))
+      .where(ilike(fn<string>('concat', db.customer.firstName, ' ', db.customer.lastName), '%Dan%'))
       .many()
     assert.equal(r.length, 1)
     assert.equal(r[0].firstName, 'Dan')

@@ -17,7 +17,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { alias, aliasedRelation, currentTimestamp, fn, raw, ref, subquery } from './expressions.js'
+import { alias, aliasedRelation, currentTimestamp, fn, ref, subquery } from './expressions.js'
 import type { FieldRef, Prettify } from './types.js'
 
 import { schema, ID, type Role, type TripState } from './test-schema.js'
@@ -287,12 +287,13 @@ describe('type: projection inference', () => {
 
   // --- Aliased relation: explicit inner Shape, label inferred ---
   async function _aliasedRelation() {
+    const { sum } = await import('./functions.js')
     const r = await query(db, 'vehicle')
       .select(
         'id',
         'make',
         aliasedRelation<{ count: number }>('passengers', 'trips', {
-          fields: [raw('count: sum(seats)')],
+          fields: [alias('count', sum(db.trip.seats))],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
       )
@@ -411,7 +412,7 @@ describe('type: filter operators', () => {
   async function _concatIlike() {
     await query(db, 'customer')
       .where(
-        ilike(fn<string>('concat', db.customer.firstName, raw("' '"), db.customer.lastName), '%john%'),
+        ilike(fn<string>('concat', db.customer.firstName, ' ', db.customer.lastName), '%john%'),
       )
       .many()
   }

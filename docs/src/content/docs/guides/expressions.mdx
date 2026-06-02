@@ -1,11 +1,11 @@
 ---
 title: Expressions
-description: Function calls, references, subqueries, aliases, and raw OQL — for queries that need more than plain field comparisons.
+description: Function calls, references, subqueries, and aliases — for queries that need more than plain field comparisons.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
-When a query needs SQL functions, subqueries, or aliased projections, oql-typed has expression helpers that plug into the type system. The escape hatch for anything unmodelled is `raw()`.
+When a query needs SQL functions, subqueries, or aliased projections, oql-typed has expression helpers that plug into the type system. Every construct is fully typed — there is no untyped raw-OQL escape hatch.
 
 ## `fn(name, ...args)` — generic function call
 
@@ -14,9 +14,9 @@ For arbitrary SQL functions without a typed wrapper:
 <Tabs syncKey="fn">
   <TabItem label="Function in a filter">
     ```typescript
-    import { fn, raw, ilike } from '@vinctus/oql-typed'
+    import { fn, ilike } from '@vinctus/oql-typed'
 
-    ilike(fn('concat', db.user.firstName, raw("' '"), db.user.lastName), '%john%')
+    ilike(fn('concat', db.user.firstName, ' ', db.user.lastName), '%john%')
     ```
 
     ```oql
@@ -29,7 +29,7 @@ For arbitrary SQL functions without a typed wrapper:
 
     query(db, 'user').select(
       'id',
-      alias('fullName', fn('concat', db.user.firstName, raw("' '"), db.user.lastName)),
+      alias('fullName', fn('concat', db.user.firstName, ' ', db.user.lastName)),
     )
     ```
 
@@ -81,10 +81,10 @@ CREATE INDEX user_full_name_idx ON users ((first_name || ' ' || last_name));
 ```
 
 ```typescript
-import { concatOp, ilike, raw } from '@vinctus/oql-typed'
+import { concatOp, ilike } from '@vinctus/oql-typed'
 
 // Hits user_full_name_idx
-ilike(concatOp(db.user.firstName, raw("' '"), db.user.lastName), '%john%')
+ilike(concatOp(db.user.firstName, ' ', db.user.lastName), '%john%')
 ```
 
 Use `concat(...)` when you want NULL-safe behavior and don't need an index:
@@ -132,24 +132,6 @@ The expression is emitted inline — it is **not** parameterized, so the databas
 
 <Aside type="note">
 Comparison operators accept an `OQLExpr` on the value side, not just a literal. `currentTimestamp()` is the common case, but any expression of the field's type works there too.
-</Aside>
-
-## `raw(text)` — literal OQL escape hatch
-
-When a construct isn't modelled, emit it literally.
-
-```typescript
-import { raw } from '@vinctus/oql-typed'
-
-query(db, 'post').select('id', raw('totalViews: sum(viewCount)'))
-```
-
-```oql
-post {id totalViews: sum(viewCount)}
-```
-
-<Aside type="caution">
-`raw()` bypasses the type system. Prefer typed helpers whenever possible; reach for `raw()` only for things oql-typed doesn't yet model.
 </Aside>
 
 ## `ref(m2o)` — the `&` reference operator
@@ -251,10 +233,10 @@ The same idea, but for a nested relation. The relation is named by **string lite
   </TabItem>
 </Tabs>
 
-For aliased relations whose row shape can't be inferred (e.g. only `raw(...)` entries), pass an explicit `Shape` type argument:
+For aliased relations whose row shape can't be inferred (e.g. only plain scalar field-name strings), pass an explicit `Shape` type argument:
 
 ```typescript
-aliasedRelation<{ count: number }>('passengers', 'trips', {
-  fields: [raw('count: sum(seats)')],
+aliasedRelation<{ id: string; state: string }>('activeTrips', 'trips', {
+  fields: ['id', 'state'],
 })
 ```

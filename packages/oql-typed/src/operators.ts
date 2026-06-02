@@ -35,7 +35,7 @@ export interface FilterExpr {
 // ══════════════════════════════════════════════════════════════════════
 
 function resolveField(field: FilterField<any>, ctx: FilterContext): string {
-  // OQL expression (fn(), raw(), alias()) — delegate to toOQL
+  // OQL expression (fn(), alias()) — delegate to toOQL
   if ('__oqlExpr' in (field as any) && typeof (field as any).toOQL === 'function') {
     return (field as any).toOQL(ctx)
   }

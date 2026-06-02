@@ -12,7 +12,7 @@ export interface OQLExpr<T = unknown> {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// fn(name, ...args) — function call, e.g. fn('concat', a, raw("' '"), b)
+// fn(name, ...args) — function call, e.g. fn('concat', a, ' ', b)
 // ══════════════════════════════════════════════════════════════════════
 
 type FnArg = FieldRef<any> | OQLExpr<any> | string | number | boolean | { fieldName: string }
@@ -59,24 +59,6 @@ export function currentTimestamp(): OQLExpr<Date> & FieldRef<Date> {
     builder: null,
     toOQL(_ctx: FilterContext): string {
       return 'CURRENT_TIMESTAMP'
-    },
-  } as any
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// raw(oql) — escape hatch for anything without a typed wrapper
-// ══════════════════════════════════════════════════════════════════════
-
-export function raw<T = unknown>(oql: string): OQLExpr<T> & FieldRef<T> & OQLProjectionArg {
-  return {
-    __oqlExpr: true,
-    __fieldRef: true,
-    _type: undefined,
-    entityName: '',
-    fieldName: oql,
-    builder: null,
-    toOQL(_ctx: FilterContext): string {
-      return oql
     },
   } as any
 }
@@ -162,9 +144,9 @@ export function alias<Label extends string, T>(
 // is inferred from any typed expressions in `spec.fields` (e.g. entries
 // built with `alias(...)` over typed aggregates like `sum(...)`).
 //
-// For untyped fields (scalar field names, `raw('...')`) the caller can
+// For untyped fields (plain scalar field-name strings) the caller can
 // provide an explicit inner Shape as the first type argument:
-//   aliasedRelation<{ count: number }>('passengers', 'trips', { fields: [raw('count: sum(seats)')] })
+//   aliasedRelation<{ id: string }>('activeTrips', 'trips', { fields: ['id'] })
 //
 // When Shape is provided, it overrides inference. When it is not, inference
 // merges every typed-field `_projectionType` into the inner row shape.
@@ -175,7 +157,7 @@ type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
   : never
 
 // Extract `_projectionType` contributions from each field entry and intersect them.
-// Fields without a typed projection (raw, scalar strings) contribute nothing.
+// Fields without a typed projection (plain scalar strings) contribute nothing.
 type InferAliasedRelRow<Fields extends readonly any[]> = UnionToIntersection<
   Fields[number] extends { readonly _projectionType?: infer P }
     ? P extends Record<string, unknown>

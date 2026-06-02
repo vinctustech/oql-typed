@@ -50,7 +50,6 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 |-----------|-----|
 | `fn(name, ...args)` | `name(a, b, ...)` |
 | `currentTimestamp()` | `CURRENT_TIMESTAMP` |
-| `raw(text)` | literal `text` |
 | `ref(m2oRel)` | `&relationName` |
 | `subquery<T>(rel, projection, filter?)` | `(rel {projection} [filter])` |
 | `alias(label, expr)` | `label: expression` |
