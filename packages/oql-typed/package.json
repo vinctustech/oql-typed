@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "@vinctus/oql-petradb": "^1.4.2-alpha.1",
+    "@vinctus/oql-petradb": "^1.4.2-alpha.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },
