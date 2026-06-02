@@ -12,7 +12,8 @@
     "build": "tsc",
     "typecheck": "tsc --project tsconfig.typecheck.json",
     "test:runtime": "node --import tsx --test src/*.test.ts",
-    "test": "npm run typecheck && npm run test:runtime",
+    "test:runtime:string": "OQL_TYPED_ENGINE=string node --import tsx --test src/*.test.ts",
+    "test": "npm run typecheck && npm run test:runtime && npm run test:runtime:string",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -21,7 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "@vinctus/oql-petradb": "^1.4.1-alpha.5",
+    "@vinctus/oql-petradb": "^1.4.2-alpha.1",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },

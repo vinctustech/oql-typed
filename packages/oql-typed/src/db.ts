@@ -11,11 +11,19 @@ export interface OQLInstance {
   queryOne<T = any>(query: string, params?: Record<string, unknown>): Promise<T | undefined>
   queryMany<T = any>(query: string, params?: Record<string, unknown>): Promise<T[]>
   count(query: string, params?: Record<string, unknown>): Promise<number>
+  // AST entry points — accept a pre-built plain-object AST, bypassing the string parser
+  queryOneAST<T = any>(ast: unknown): Promise<T | undefined>
+  queryManyAST<T = any>(ast: unknown): Promise<T[]>
+  countAST(ast: unknown): Promise<number>
   entity(name: string): {
     insert<T = any>(data: Record<string, unknown>): Promise<T>
     update<T = any>(id: unknown, data: Record<string, unknown>): Promise<T>
   }
 }
+
+// Which engine the query terminals use. 'ast' (default) builds a plain-object
+// AST and calls *AST; 'string' builds an OQL string and calls the string forms.
+export type Engine = 'ast' | 'string'
 
 // ══════════════════════════════════════════════════════════════════════
 // DB type — db.user, db.account, etc.
@@ -34,6 +42,7 @@ export type EntityHandle<S extends Schema, Name extends keyof S> = {
 export type DB<S extends Schema> = {
   readonly __oql: OQLInstance
   readonly __schema: S
+  readonly __engine: Engine
 } & {
   readonly [Name in keyof S]: EntityHandle<S, Name>
 }
@@ -102,7 +111,7 @@ function createRelationRef(
   return base
 }
 
-function createEntityHandle(oql: OQLInstance, schema: Schema, entityName: string): any {
+function createEntityHandle(oql: OQLInstance, schema: Schema, entityName: string, engine: Engine): any {
   const def = getEntityDef(schema, entityName)
   const handle: Record<string, any> = {
     __entityName: entityName,
@@ -118,7 +127,7 @@ function createEntityHandle(oql: OQLInstance, schema: Schema, entityName: string
   // Mix in query-starter methods so `db.user.select(...).where(...)` works.
   // Starter factory is injected via registerStarterFactory() to avoid a hard
   // circular import between db.ts and query.ts.
-  const starter = starterFactory(oql, schema, entityName)
+  const starter = starterFactory(oql, schema, entityName, engine)
   for (const key of Object.keys(starter)) {
     if (!(key in handle)) handle[key] = starter[key]
   }
@@ -126,7 +135,7 @@ function createEntityHandle(oql: OQLInstance, schema: Schema, entityName: string
 }
 
 // Injected by query.ts on module load to avoid circular import.
-type StarterFactory = (oql: OQLInstance, schema: Schema, entityName: string) => Record<string, any>
+type StarterFactory = (oql: OQLInstance, schema: Schema, entityName: string, engine: Engine) => Record<string, any>
 let starterFactory: StarterFactory = () => {
   throw new Error(
     'oql-typed: starter factory not registered. Import from the package root (@vinctus/oql-typed) to ensure all modules load.',
@@ -141,13 +150,19 @@ export function registerStarterFactory(fn: StarterFactory): void {
 // typedOQL — the factory
 // ══════════════════════════════════════════════════════════════════════
 
-export function typedOQL<S extends Schema>(oql: OQLInstance, schema: S): DB<S> {
+export function typedOQL<S extends Schema>(
+  oql: OQLInstance,
+  schema: S,
+  opts?: { engine?: Engine },
+): DB<S> {
+  const engine: Engine = opts?.engine ?? 'ast'
   const db: Record<string, any> = {
     __oql: oql,
     __schema: schema,
+    __engine: engine,
   }
   for (const entityName of Object.keys(schema)) {
-    db[entityName] = createEntityHandle(oql, schema, entityName)
+    db[entityName] = createEntityHandle(oql, schema, entityName, engine)
   }
   return db as DB<S>
 }

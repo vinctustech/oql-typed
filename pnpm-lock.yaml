@@ -26,8 +26,8 @@ importers:
         specifier: ^25.6.0
         version: 25.6.0
       '@vinctus/oql-petradb':
-        specifier: ^1.4.1-alpha.5
-        version: 1.4.1-alpha.5
+        specifier: ^1.4.2-alpha.1
+        version: 1.4.2-alpha.1
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
@@ -715,8 +715,8 @@ packages:
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
 
-  '@vinctus/oql-petradb@1.4.1-alpha.5':
-    resolution: {integrity: sha512-2h2numDIECvneq7Sk+mITule0xzbnUZQph9iAkoNoExq9HaDUS8KYJZcmNuhVHuD2K3W2ER4KRZ8qCn71F4v9A==}
+  '@vinctus/oql-petradb@1.4.2-alpha.1':
+    resolution: {integrity: sha512-Q7BBaXjPvgpKuIn2XtWeUCNE2zwtXbOEaln21Hm+IxoR8WiyR5pNVdwIoxh1aGgEId7xQM8eAVZgugd2+R+XMA==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -2431,7 +2431,7 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vinctus/oql-petradb@1.4.1-alpha.5': {}
+  '@vinctus/oql-petradb@1.4.2-alpha.1': {}
 
   acorn-jsx@5.3.2(acorn@8.16.0):
     dependencies:

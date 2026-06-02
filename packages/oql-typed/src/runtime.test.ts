@@ -124,10 +124,15 @@ function schemaToDM(s: typeof schema): string {
 let oql: OQL_PETRADB
 let db: ReturnType<typeof typedOQL<typeof schema>>
 
+// Run the whole behavioral suite under either engine. OQL_TYPED_ENGINE=string
+// exercises the string-builder fallback with the same assertions (see the
+// test:runtime:string script); default is the AST engine.
+const engine = (process.env.OQL_TYPED_ENGINE as 'ast' | 'string' | undefined) ?? 'ast'
+
 before(async () => {
   const dm = schemaToDM(schema)
   oql = new OQL_PETRADB(dm)
-  db = typedOQL(oql, schema)
+  db = typedOQL(oql, schema, { engine })
   await oql.rawMulti(seedSQL + dataSQL)
 })
 

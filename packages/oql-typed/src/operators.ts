@@ -1,6 +1,7 @@
 import { Relation } from './schema.js'
 import type { FieldRef, RelationFieldRef, Schema } from './types.js'
 import type { OQLExpr } from './expressions.js'
+import { litToAST, fieldRefToAST, operandToAST, foldInfix, type ASTNode } from './ast.js'
 
 // A filter operand: a scalar field ref OR a manyToOne relation ref
 // (manyToOne auto-resolves to its dotted FK path at runtime).
@@ -28,6 +29,7 @@ export class FilterContext {
 export interface FilterExpr {
   readonly __filterExpr: true
   toOQL(ctx: FilterContext): string
+  toAST(): ASTNode
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -77,6 +79,9 @@ function compareImpl(field: any, op: string, value: unknown): FilterExpr {
     __filterExpr: true,
     toOQL(ctx) {
       return `${resolveField(field, ctx)} ${op} ${renderOperand(value, ctx)}`
+    },
+    toAST() {
+      return { kind: 'infix', op, left: fieldRefToAST(field), right: operandToAST(value) }
     },
   }
 }
@@ -145,6 +150,9 @@ function asFilterExpr(arg: FilterArg): FilterExpr {
     toOQL(ctx) {
       return resolveField(arg as FieldRef<any>, ctx)
     },
+    toAST() {
+      return fieldRefToAST(arg)
+    },
   }
 }
 
@@ -154,6 +162,9 @@ export function and(...args: FilterArg[]): FilterExpr {
     __filterExpr: true,
     toOQL(ctx) {
       return exprs.map((e) => e.toOQL(ctx)).join(' AND ')
+    },
+    toAST() {
+      return foldInfix('AND', exprs.map((e) => e.toAST()))
     },
   }
 }
@@ -166,6 +177,10 @@ export function or(...args: FilterArg[]): FilterExpr {
       const inner = exprs.map((e) => e.toOQL(ctx)).join(' OR ')
       return exprs.length > 1 ? `(${inner})` : inner
     },
+    toAST() {
+      const folded = foldInfix('OR', exprs.map((e) => e.toAST()))
+      return exprs.length > 1 ? { kind: 'grouped', expr: folded } : folded
+    },
   }
 }
 
@@ -175,6 +190,9 @@ export function not(expr: FilterArg): FilterExpr {
     __filterExpr: true,
     toOQL(ctx) {
       return `NOT (${inner.toOQL(ctx)})`
+    },
+    toAST() {
+      return { kind: 'prefix', op: 'NOT', expr: { kind: 'grouped', expr: inner.toAST() } }
     },
   }
 }
@@ -191,6 +209,9 @@ export function inList(field: any, values: any[]): FilterExpr {
     toOQL(ctx) {
       return `${resolveField(field, ctx)} IN ${ctx.addParam(values)}`
     },
+    toAST() {
+      return { kind: 'in', op: 'IN', left: fieldRefToAST(field), values: values.map(litToAST) }
+    },
   }
 }
 
@@ -201,6 +222,9 @@ export function notInList(field: any, values: any[]): FilterExpr {
     __filterExpr: true,
     toOQL(ctx) {
       return `${resolveField(field, ctx)} NOT IN ${ctx.addParam(values)}`
+    },
+    toAST() {
+      return { kind: 'in', op: 'NOT IN', left: fieldRefToAST(field), values: values.map(litToAST) }
     },
   }
 }
@@ -213,6 +237,9 @@ export function like(field: FieldRef<string> | FieldRef<string | null>, pattern:
     toOQL(ctx) {
       return `${resolveField(field, ctx)} LIKE ${ctx.addParam(pattern)}`
     },
+    toAST() {
+      return { kind: 'infix', op: 'LIKE', left: fieldRefToAST(field), right: litToAST(pattern) }
+    },
   }
 }
 
@@ -221,6 +248,9 @@ export function ilike(field: FieldRef<string> | FieldRef<string | null>, pattern
     __filterExpr: true,
     toOQL(ctx) {
       return `${resolveField(field, ctx)} ILIKE ${ctx.addParam(pattern)}`
+    },
+    toAST() {
+      return { kind: 'infix', op: 'ILIKE', left: fieldRefToAST(field), right: litToAST(pattern) }
     },
   }
 }
@@ -233,6 +263,9 @@ export function between(field: any, low: any, high: any): FilterExpr {
     toOQL(ctx) {
       return `${resolveField(field, ctx)} BETWEEN ${ctx.addParam(low)} AND ${ctx.addParam(high)}`
     },
+    toAST() {
+      return { kind: 'between', expr: fieldRefToAST(field), lower: litToAST(low), upper: litToAST(high) }
+    },
   }
 }
 
@@ -242,6 +275,9 @@ export function isNull(field: FieldRef<any> | RelationFieldRef<Schema, any, 'man
     toOQL(ctx) {
       return `${resolveField(field, ctx)} IS NULL`
     },
+    toAST() {
+      return { kind: 'postfix', op: 'IS NULL', expr: fieldRefToAST(field) }
+    },
   }
 }
 
@@ -250,6 +286,9 @@ export function isNotNull(field: FieldRef<any> | RelationFieldRef<Schema, any, '
     __filterExpr: true,
     toOQL(ctx) {
       return `${resolveField(field, ctx)} IS NOT NULL`
+    },
+    toAST() {
+      return { kind: 'postfix', op: 'IS NOT NULL', expr: fieldRefToAST(field) }
     },
   }
 }
@@ -271,6 +310,11 @@ export function exists(
       }
       return `EXISTS(${relation.fieldName})`
     },
+    toAST() {
+      const node: ASTNode = { kind: 'exists', source: relation.fieldName }
+      if (inner) node.select = inner.toAST()
+      return node
+    },
   }
 }
 
@@ -281,6 +325,7 @@ export function exists(
 export interface OrderExpr {
   readonly __orderExpr: true
   toOQL(): string
+  toAST(): ASTNode
 }
 
 export function asc(field: FieldRef<any> | RelationFieldRef<Schema, any, 'manyToOne'>): OrderExpr {
@@ -288,6 +333,9 @@ export function asc(field: FieldRef<any> | RelationFieldRef<Schema, any, 'manyTo
     __orderExpr: true,
     toOQL() {
       return `${(field as FieldRef).fieldName} ASC`
+    },
+    toAST() {
+      return { expr: fieldRefToAST(field), dir: 'ASC' }
     },
   }
 }
@@ -297,6 +345,9 @@ export function desc(field: FieldRef<any> | RelationFieldRef<Schema, any, 'manyT
     __orderExpr: true,
     toOQL() {
       return `${(field as FieldRef).fieldName} DESC`
+    },
+    toAST() {
+      return { expr: fieldRefToAST(field), dir: 'DESC' }
     },
   }
 }

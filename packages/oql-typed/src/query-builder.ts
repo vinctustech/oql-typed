@@ -1,6 +1,7 @@
 import type { Schema, InferProjection, ProjectionArg, FieldRef, RelationFieldRef } from './types.js'
 import { FilterContext, and, eq, inList, type FilterExpr, type FilterArg, type OrderExpr } from './operators.js'
-import type { DB, OQLInstance } from './db.js'
+import type { DB, OQLInstance, Engine } from './db.js'
+import { buildProjectionAST, foldInfix } from './ast.js'
 
 // Shared with query.ts but kept separate here to avoid circular imports.
 function isFilteredSpec(
@@ -49,11 +50,13 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
   private limitVal: number | undefined
   private offsetVal: number | undefined
   private skipNext = false
+  private readonly engine: Engine
 
-  constructor(oql: OQLInstance, entityName: Name, projectionArgs: readonly any[]) {
+  constructor(oql: OQLInstance, entityName: Name, projectionArgs: readonly any[], engine: Engine) {
     this.oql = oql
     this.entityName = entityName
     this.projectionArgs = projectionArgs
+    this.engine = engine
   }
 
   cond(value: unknown): this
@@ -131,17 +134,38 @@ class CondQueryBuilder<S extends Schema, Name extends keyof S, Result> {
     return this.build(opts)
   }
 
+  private buildAST(opts?: { paginate?: boolean }): Record<string, unknown> {
+    const paginate = opts?.paginate !== false
+    const node: Record<string, unknown> = {
+      kind: 'query',
+      source: String(this.entityName),
+      project: buildProjectionAST(this.projectionArgs),
+    }
+    if (this.filters.length > 0) node.select = foldInfix('AND', this.filters.map((f) => f.toAST()))
+    if (this.orderExprs.length > 0) node.order = this.orderExprs.map((o) => o.toAST())
+    if (paginate && this.limitVal !== undefined) node.limit = this.limitVal
+    if (paginate && this.offsetVal !== undefined) node.offset = this.offsetVal
+    return node
+  }
+
+  toAST(opts?: { paginate?: boolean }): Record<string, unknown> {
+    return this.buildAST(opts)
+  }
+
   async one(): Promise<Result | undefined> {
+    if (this.engine === 'ast') return this.oql.queryOneAST<Result>(this.buildAST())
     const { queryStr, params } = this.build()
     return this.oql.queryOne<Result>(queryStr, params)
   }
 
   async many(): Promise<Result[]> {
+    if (this.engine === 'ast') return this.oql.queryManyAST<Result>(this.buildAST())
     const { queryStr, params } = this.build()
     return this.oql.queryMany<Result>(queryStr, params)
   }
 
   async count(): Promise<number> {
+    if (this.engine === 'ast') return this.oql.countAST(this.buildAST({ paginate: false }))
     const { queryStr, params } = this.build({ paginate: false })
     return this.oql.count(queryStr, params)
   }
@@ -162,9 +186,10 @@ export function queryBuilder<S extends Schema, Name extends keyof S & string>(
   entityName: Name,
 ): QueryBuilderStarter<S, Name> {
   const oql = db.__oql as OQLInstance
+  const engine = db.__engine as Engine
   return {
     select<const Args extends readonly ProjectionArg<S, Name>[]>(...args: Args) {
-      return new CondQueryBuilder<S, Name, InferProjection<S, Name, Args>>(oql, entityName, args)
+      return new CondQueryBuilder<S, Name, InferProjection<S, Name, Args>>(oql, entityName, args, engine)
     },
   }
 }

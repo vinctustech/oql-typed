@@ -1,6 +1,7 @@
 import type { FieldRef } from './types.js'
 import type { FilterContext } from './operators.js'
 import type { OQLExpr } from './expressions.js'
+import { argToAST, foldInfix } from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Typed wrappers for common SQL functions.
@@ -35,6 +36,9 @@ function makeCall<T>(name: string, args: AnyArg[]): OQLExpr<T> & FieldRef<T> {
     builder: null,
     toOQL(ctx: FilterContext): string {
       return `${name}(${args.map((a) => renderArg(a, ctx)).join(', ')})`
+    },
+    toAST() {
+      return { kind: 'apply', f: name, args: args.map(argToAST) }
     },
   }
   return expr
@@ -84,6 +88,9 @@ export function concatOp(...args: StringArg[]): OQLExpr<string | null> & FieldRe
     toOQL(ctx: FilterContext): string {
       return `(${args.map((a) => renderArg(a, ctx)).join(' || ')})`
     },
+    toAST() {
+      return { kind: 'grouped', expr: foldInfix('||', args.map(argToAST)) }
+    },
   }
   return expr
 }
@@ -118,6 +125,9 @@ export function count(x: FieldRef<any> | '*' = '*'): OQLExpr<number> & FieldRef<
       builder: null,
       toOQL(_ctx: FilterContext): string {
         return 'count(*)'
+      },
+      toAST() {
+        return { kind: 'apply', f: 'count', args: [{ kind: 'star' }] }
       },
     }
     return expr

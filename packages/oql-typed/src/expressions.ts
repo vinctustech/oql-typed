@@ -1,5 +1,6 @@
 import type { FieldRef, OQLProjectionArg } from './types.js'
 import { and, type FilterArg, type FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
+import { argToAST, fieldRefToAST, whereToAST, buildProjectionAST, type ASTNode } from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // OQLExpr — can appear in both filter and projection positions
@@ -9,6 +10,7 @@ export interface OQLExpr<T = unknown> {
   readonly __oqlExpr: true
   readonly _type: T
   toOQL(ctx: FilterContext): string
+  toAST(): ASTNode
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -37,6 +39,9 @@ export function fn<T = unknown>(name: string, ...args: FnArg[]): OQLExpr<T> & Fi
     toOQL(ctx: FilterContext): string {
       return `${name}(${args.map((a) => renderFnArg(a, ctx)).join(', ')})`
     },
+    toAST() {
+      return { kind: 'apply', f: name, args: args.map(argToAST) }
+    },
   }
   return expr
 }
@@ -60,6 +65,9 @@ export function currentTimestamp(): OQLExpr<Date> & FieldRef<Date> {
     toOQL(_ctx: FilterContext): string {
       return 'CURRENT_TIMESTAMP'
     },
+    toAST() {
+      return { kind: 'attr', ids: ['CURRENT_TIMESTAMP'] }
+    },
   } as any
 }
 
@@ -78,7 +86,23 @@ export function ref<T = unknown>(field: { fieldName: string; builder?: any }): O
     toOQL(_ctx: FilterContext): string {
       return `&${field.fieldName}`
     },
+    toAST() {
+      return { kind: 'ref', ids: String(field.fieldName).split('.') }
+    },
   } as any
+}
+
+// Convert a subquery projection string to a project node. subquery still takes
+// raw projection strings; the common forms (a plain column name, or count(*))
+// map cleanly. Anything else has no typed AST form yet.
+function subqueryProjToAST(p: string): ASTNode {
+  const t = p.trim()
+  if (t === 'count(*)')
+    return { kind: 'expr', label: 'count', expr: { kind: 'apply', f: 'count', args: [{ kind: 'star' }] } }
+  if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(t)) return { kind: 'field', name: t }
+  throw new Error(
+    `subquery projection '${p}' has no typed AST form; use a plain column name or count(*) (or the string engine)`,
+  )
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -103,6 +127,11 @@ export function subquery<T = unknown>(
       let q = `${name} {${projection.join(' ')}}`
       if (filter) q += ` [${filter.toOQL(ctx)}]`
       return `(${q})`
+    },
+    toAST() {
+      const query: ASTNode = { kind: 'query', source: name, project: projection.map(subqueryProjToAST) }
+      if (filter) query.select = filter.toAST()
+      return { kind: 'subquery', query }
     },
   } as any
 }
@@ -132,6 +161,13 @@ export function alias<Label extends string, T>(
         return `${label}: (${inner.toOQL(ctx)})`
       }
       return `${label}: (${(inner as FieldRef).fieldName})`
+    },
+    toAST() {
+      const expr =
+        '__oqlExpr' in inner && typeof (inner as any).toAST === 'function'
+          ? (inner as any).toAST()
+          : fieldRefToAST(inner)
+      return { kind: 'expr', label, expr }
     },
   } as any
 }
@@ -243,6 +279,17 @@ export function aliasedRelation<
         s += ` <${spec.orderBy.map((o) => o.toOQL()).join(', ')}>`
       }
       return s
+    },
+    toAST() {
+      const node: ASTNode = {
+        kind: 'rel',
+        label: alias,
+        source: relation,
+        project: buildProjectionAST(spec.fields as readonly any[]),
+      }
+      if (spec.where) node.select = whereToAST(spec.where)
+      if (spec.orderBy && spec.orderBy.length > 0) node.order = spec.orderBy.map((o) => o.toAST())
+      return node
     },
   } as any
 }
