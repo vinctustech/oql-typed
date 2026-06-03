@@ -136,7 +136,7 @@ Comparison operators accept an `OQLExpr` on the value side, not just a literal. 
 
 ## `ref(m2o)` — the `&` reference operator
 
-OQL's `&field` operator returns the foreign-key **column value itself**, rather than joining to the target entity. Useful when you only need to test the FK (e.g. for null-checks) without loading the related row.
+OQL's `&field` operator returns the foreign-key **column value itself**, rather than joining to the target entity. Useful when you only need to test the FK (e.g. for null-checks) without loading the related row. Its type is inferred as the target entity's primary-key type (e.g. a `uuid` FK → `string`).
 
 ```typescript
 import { ref, isNull } from '@vinctus/oql-typed'
@@ -204,9 +204,9 @@ const rows = await query(db, 'comment')
 comment {id parentId: parent.id}
 ```
 
-## `aliasedRelation(label, relationName, spec)` — aliased sub-collection
+## `aliasedRelation(label, relationRef, spec)` — aliased sub-collection
 
-The same idea, but for a nested relation. The relation is named by **string literal** (matching the field name on the entity). The outer alias label and the typed inner projection both end up in the result type.
+The same idea, but for a nested relation. The relation is passed as a **typed ref** (`db.X.someRelation`), so the target entity is known — field-name strings are type-checked against it and the inner row shape is inferred. The outer alias label and the inner projection both flow into the result type.
 
 <Tabs syncKey="arel">
   <TabItem label="TypeScript">
@@ -216,7 +216,7 @@ The same idea, but for a nested relation. The relation is named by **string lite
     db.post.select(
       'id',
       'title',
-      aliasedRelation('topComments', 'comments', {
+      aliasedRelation('topComments', db.post.comments, {
         fields: ['id', 'body'],
         where: eq(db.comment.author.role, 'ADMIN'),
       }),
@@ -239,10 +239,9 @@ The same idea, but for a nested relation. The relation is named by **string lite
   </TabItem>
 </Tabs>
 
-For aliased relations whose row shape can't be inferred (e.g. only plain scalar field-name strings), pass an explicit `Shape` type argument:
+Plain scalar field-name strings are type-checked against the related entity and contribute to the inferred row shape — no explicit type argument is needed:
 
 ```typescript
-aliasedRelation<{ id: string; state: string }>('activeTrips', 'trips', {
-  fields: ['id', 'state'],
-})
+aliasedRelation('activeTrips', db.vehicle.trips, { fields: ['id', 'state'] })
+// → { activeTrips: { id: string; state: TripState }[] }
 ```

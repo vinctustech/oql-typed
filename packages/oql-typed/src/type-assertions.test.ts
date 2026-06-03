@@ -288,33 +288,33 @@ describe('type: projection inference', () => {
     >
   }
 
-  // --- Aliased relation: explicit inner Shape, label inferred ---
+  // --- Aliased relation: plain scalar field-name strings are typed against the
+  //     target entity, and the row shape is inferred with no explicit Shape ---
   async function _aliasedRelation() {
-    const { sum } = await import('./functions.js')
     const r = await query(db, 'vehicle')
       .select(
         'id',
         'make',
-        aliasedRelation<{ count: number }>('passengers', 'trips', {
-          fields: [alias('count', sum(db.trip.seats))],
+        aliasedRelation('passengers', db.vehicle.trips, {
+          fields: ['id', 'state'],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
       )
       .one()
-    // Direct field access is what matters in practice:
-    type _Count = NonNullable<typeof r>['passengers'][number]['count']
-    type _ = AssertTrue<AssertEqual<_Count, number>>
+    type _Row = NonNullable<typeof r>['passengers'][number]
+    type _ = AssertTrue<AssertEqual<_Row['id'], string>>
+    type __ = AssertTrue<AssertEqual<_Row['state'], TripState>>
     type _Id = NonNullable<typeof r>['id']
-    type __ = AssertTrue<AssertEqual<_Id, string>>
+    type ___ = AssertTrue<AssertEqual<_Id, string>>
   }
 
-  // --- Aliased relation: shape fully inferred from typed fields ---
+  // --- Aliased relation: shape fully inferred from typed expression fields ---
   async function _aliasedRelationInferred() {
     const { sum } = await import('./functions.js')
     const r = await query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation('passengers', 'trips', {
+        aliasedRelation('passengers', db.vehicle.trips, {
           fields: [alias('total', sum(db.trip.seats))],
         }),
       )
@@ -402,6 +402,10 @@ describe('type: filter operators', () => {
   // --- & reference operator: &returnTripFor IS NULL ---
   async function _ref() {
     await query(db, 'trip').where(isNull(ref(db.trip.returnTripFor))).many()
+    // ref infers the target entity's primary-key type (trip's uuid -> string)
+    const r = ref(db.trip.returnTripFor)
+    type _T = (typeof r)['_type']
+    type _ = AssertTrue<AssertEqual<_T, string>>
   }
 
   // --- BETWEEN on timestamp ---

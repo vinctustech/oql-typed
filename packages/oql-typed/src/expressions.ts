@@ -1,4 +1,12 @@
-import type { FieldRef, OQLProjectionArg } from './types.js'
+import type {
+  FieldRef,
+  OQLProjectionArg,
+  Schema,
+  RelationFieldRef,
+  PKType,
+  ProjectionArg,
+  InferProjection,
+} from './types.js'
 import { and, type FilterArg, type FilterContext, type OrderExpr } from './operators.js'
 import { argToAST, fieldRefToAST, whereToAST, buildProjectionAST, type ASTNode } from './ast.js'
 
@@ -72,10 +80,15 @@ export function currentTimestamp(): OQLExpr<Date> & FieldRef<Date> {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// ref(field) — & reference operator: &returnTripFor IS NULL
+// ref(manyToOneRelation) — & reference operator: the foreign-key value itself
+// (no join to the target). Its type is inferred as the target entity's primary
+// key type, so `ref(db.comment.parent)` is OQLExpr<string> (a uuid FK):
+//   isNull(ref(db.trip.returnTripFor))  →  &returnTripFor IS NULL
 // ══════════════════════════════════════════════════════════════════════
 
-export function ref<T = unknown>(field: { fieldName: string; builder?: any }): OQLExpr<T> & FieldRef<T> {
+export function ref<S extends Schema, Target extends keyof S>(
+  field: RelationFieldRef<S, Target, 'manyToOne'>,
+): OQLExpr<PKType<S, Target>> & FieldRef<PKType<S, Target>> {
   return {
     __oqlExpr: true,
     __fieldRef: true,
@@ -170,34 +183,15 @@ export function alias<Label extends string, T>(
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// aliasedRelation(alias, relation, spec) — alias a sub-collection projection:
-//   passengers: trips {count: sum(seats)} [state != 'COMPLETED']
+// aliasedRelation(alias, relationRef, spec) — alias a sub-collection projection:
+//   aliasedRelation('passengers', db.vehicle.trips, { fields: ['id', 'state'] })
+//     →  { passengers: { id: string; state: TripState }[] }
 //
-// The outer key is inferred from the `alias` argument. The inner row shape
-// is inferred from any typed expressions in `spec.fields` (e.g. entries
-// built with `alias(...)` over typed aggregates like `sum(...)`).
-//
-// For untyped fields (plain scalar field-name strings) the caller can
-// provide an explicit inner Shape as the first type argument:
-//   aliasedRelation<{ id: string }>('activeTrips', 'trips', { fields: ['id'] })
-//
-// When Shape is provided, it overrides inference. When it is not, inference
-// merges every typed-field `_projectionType` into the inner row shape.
+// The relation is a typed ref (db.X.someRelation), so the target entity is
+// known: field-name strings are type-checked against it and the inner row
+// shape is inferred via InferProjection — no explicit Shape type, no raw
+// strings. The outer key is the `alias` argument.
 // ══════════════════════════════════════════════════════════════════════
-
-type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void
-  ? I
-  : never
-
-// Extract `_projectionType` contributions from each field entry and intersect them.
-// Fields without a typed projection (plain scalar strings) contribute nothing.
-type InferAliasedRelRow<Fields extends readonly any[]> = UnionToIntersection<
-  Fields[number] extends { readonly _projectionType?: infer P }
-    ? P extends Record<string, unknown>
-      ? P
-      : never
-    : never
->
 
 export interface AliasedRelationSpec {
   readonly fields: readonly (string | OQLExpr<any> | Record<string, any>)[]
@@ -205,40 +199,26 @@ export interface AliasedRelationSpec {
   readonly orderBy?: readonly OrderExpr[]
 }
 
-// Prettify an object type to a flat literal — collapses intersections and
-// makes AssertEqual produce a stable result.
-type Prettify<T> = { [K in keyof T]: T[K] } & {}
-
-type AliasedRelResult<
-  Shape extends Record<string, unknown>,
-  Label extends string,
-  Fields extends readonly any[],
-> = Prettify<{
-  [K in Label]: ([Shape] extends [never] ? InferAliasedRelRow<Fields> : Shape)[]
-}>
-
 export function aliasedRelation<
-  Shape extends Record<string, unknown> = never,
-  const Label extends string = string,
-  const Fields extends readonly (string | OQLExpr<any> | Record<string, any>)[] = readonly (
-    | string
-    | OQLExpr<any>
-    | Record<string, any>
-  )[],
+  S extends Schema,
+  Target extends keyof S,
+  const Label extends string,
+  const Fields extends readonly ProjectionArg<S, Target>[],
 >(
   alias: Label,
-  relation: string,
-  spec: Omit<AliasedRelationSpec, 'fields'> & { readonly fields: Fields },
-): OQLExpr<AliasedRelResult<Shape, Label, Fields>> &
+  relation: RelationFieldRef<S, Target>,
+  spec: { readonly fields: Fields; readonly where?: FilterArg; readonly orderBy?: readonly OrderExpr[] },
+): OQLExpr<{ [K in Label]: InferProjection<S, Target, Fields>[] }> &
   OQLProjectionArg & {
-    _projectionType: AliasedRelResult<Shape, Label, Fields>
+    _projectionType: { [K in Label]: InferProjection<S, Target, Fields>[] }
   } {
+  const source = relation.fieldName
   return {
     __oqlExpr: true,
     _type: undefined as any,
     _projectionType: undefined as any,
     toOQL(ctx: FilterContext): string {
-      const fieldsStr = spec.fields
+      const fieldsStr = (spec.fields as readonly any[])
         .map((f) => {
           if (typeof f === 'string') return f
           if (f && typeof f === 'object' && '__oqlExpr' in f) {
@@ -270,7 +250,7 @@ export function aliasedRelation<
           return String(f)
         })
         .join(' ')
-      let s = `${alias}: ${relation} {${fieldsStr}}`
+      let s = `${alias}: ${source} {${fieldsStr}}`
       if (spec.where) s += ` [${and(spec.where).toOQL(ctx)}]`
       if (spec.orderBy && spec.orderBy.length > 0) {
         s += ` <${spec.orderBy.map((o) => o.toOQL()).join(', ')}>`
@@ -281,7 +261,7 @@ export function aliasedRelation<
       const node: ASTNode = {
         kind: 'rel',
         label: alias,
-        source: relation,
+        source,
         project: buildProjectionAST(spec.fields as readonly any[]),
       }
       if (spec.where) node.select = whereToAST(spec.where)

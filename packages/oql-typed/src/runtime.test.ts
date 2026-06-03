@@ -295,7 +295,7 @@ describe('runtime: projections', () => {
       .select(
         'id',
         'make',
-        aliasedRelation<{ count: number }>('passengers', 'trips', {
+        aliasedRelation('passengers', db.vehicle.trips, {
           fields: [alias('count', sum(db.trip.seats))],
           where: and(ne(db.trip.state, 'COMPLETED'), ne(db.trip.state, 'CANCELLED')),
         }),
@@ -312,7 +312,7 @@ describe('runtime: projections', () => {
     const { queryStr } = query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ count: number }>('passengers', 'trips', {
+        aliasedRelation('passengers', db.vehicle.trips, {
           fields: [alias('count', sum(db.trip.seats))],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
@@ -327,7 +327,7 @@ describe('runtime: projections', () => {
     const r = await query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ id: string; state: string }>('activeTrips', 'trips', {
+        aliasedRelation('activeTrips', db.vehicle.trips, {
           fields: ['id', 'state'],
           where: ne(db.trip.state, 'COMPLETED'),
           orderBy: [desc(db.trip.createdAt)],
@@ -346,7 +346,7 @@ describe('runtime: projections', () => {
     const { queryStr } = query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation<{ id: string }>('allTrips', 'trips', {
+        aliasedRelation('allTrips', db.vehicle.trips, {
           fields: ['id'],
         }),
       )
@@ -649,7 +649,7 @@ describe('runtime: typed aggregates', () => {
     const r = await query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation('passengers', 'trips', {
+        aliasedRelation('passengers', db.vehicle.trips, {
           fields: [alias('total', sum(db.trip.seats))],
           where: ne(db.trip.state, 'COMPLETED'),
         }),
@@ -665,7 +665,7 @@ describe('runtime: typed aggregates', () => {
     const { queryStr } = query(db, 'vehicle')
       .select(
         'id',
-        aliasedRelation('avg', 'trips', {
+        aliasedRelation('avg', db.vehicle.trips, {
           fields: [alias('avgSeats', avg(db.trip.seats))],
         }),
       )
