@@ -1,5 +1,5 @@
 import type { FieldRef, OQLProjectionArg } from './types.js'
-import { and, type FilterArg, type FilterContext, type FilterExpr, type OrderExpr } from './operators.js'
+import { and, type FilterArg, type FilterContext, type OrderExpr } from './operators.js'
 import { argToAST, fieldRefToAST, whereToAST, buildProjectionAST, type ASTNode } from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
@@ -92,30 +92,23 @@ export function ref<T = unknown>(field: { fieldName: string; builder?: any }): O
   } as any
 }
 
-// Convert a subquery projection string to a project node. subquery still takes
-// raw projection strings; the common forms (a plain column name, or count(*))
-// map cleanly. Anything else has no typed AST form yet.
-function subqueryProjToAST(p: string): ASTNode {
-  const t = p.trim()
-  if (t === 'count(*)')
-    return { kind: 'expr', label: 'count', expr: { kind: 'apply', f: 'count', args: [{ kind: 'star' }] } }
-  if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(t)) return { kind: 'field', name: t }
-  throw new Error(
-    `subquery projection '${p}' has no typed AST form; use a plain column name or count(*) (or the string engine)`,
-  )
-}
-
 // ══════════════════════════════════════════════════════════════════════
-// subquery(relation, [projection], filter?) — (drivers {count(*)}) = 0
+// subquery(relation, projection, filter?) — a scalar subquery used as a value:
+//   eq(subquery(db.vehicle.trips, count('*')), 0)  →  (trips {value: (count(*))}) = 0
+//
+// `projection` is a typed expression (count('*'), sum(field), ...); its element
+// type is the subquery's scalar type, so `T` is inferred. An optional `filter`
+// scopes the inner rows. Fully typed — no raw OQL strings.
 // ══════════════════════════════════════════════════════════════════════
 
 export function subquery<T = unknown>(
   relation: { fieldName: string } | { entityName: string },
-  projection: string[],
-  filter?: FilterExpr,
+  projection: OQLExpr<T>,
+  filter?: FilterArg,
 ): OQLExpr<T> & FieldRef<T> {
   const name =
     'fieldName' in relation && relation.fieldName ? relation.fieldName : (relation as any).entityName
+  const cond = filter !== undefined ? and(filter) : undefined
   return {
     __oqlExpr: true,
     __fieldRef: true,
@@ -124,13 +117,17 @@ export function subquery<T = unknown>(
     fieldName: '',
     builder: null,
     toOQL(ctx: FilterContext): string {
-      let q = `${name} {${projection.join(' ')}}`
-      if (filter) q += ` [${filter.toOQL(ctx)}]`
+      let q = `${name} {value: (${projection.toOQL(ctx)})}`
+      if (cond) q += ` [${cond.toOQL(ctx)}]`
       return `(${q})`
     },
     toAST() {
-      const query: ASTNode = { kind: 'query', source: name, project: projection.map(subqueryProjToAST) }
-      if (filter) query.select = filter.toAST()
+      const query: ASTNode = {
+        kind: 'query',
+        source: name,
+        project: [{ kind: 'expr', label: 'value', expr: projection.toAST() }],
+      }
+      if (cond) query.select = cond.toAST()
       return { kind: 'subquery', query }
     },
   } as any

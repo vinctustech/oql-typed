@@ -4,8 +4,8 @@ import assert from 'node:assert/strict'
 import { typedOQL, type OQLInstance } from './db.js'
 import { query } from './query.js'
 import { eq, and, or, lt, inList, isNull, exists, ilike, desc } from './operators.js'
-import { alias, currentTimestamp } from './expressions.js'
-import { sum, concatOp } from './functions.js'
+import { alias, currentTimestamp, subquery } from './expressions.js'
+import { count, sum, concatOp } from './functions.js'
 import { schema } from './test-schema.js'
 
 // .toAST() is a pure builder (never touches the backend), so these shape tests
@@ -174,6 +174,41 @@ describe('toAST() shape', () => {
         },
       },
       right: { kind: 'str', v: '%dan%' },
+    })
+  })
+
+  it('scalar subquery as a value', () => {
+    const ast = query(db, 'vehicle')
+      .select('id')
+      .where(eq(subquery(db.vehicle.trips, count('*')), 0))
+      .toAST() as any
+    assert.deepStrictEqual(ast.select, {
+      kind: 'infix',
+      op: '=',
+      left: {
+        kind: 'subquery',
+        query: {
+          kind: 'query',
+          source: 'trips',
+          project: [
+            { kind: 'expr', label: 'value', expr: { kind: 'apply', f: 'count', args: [{ kind: 'star' }] } },
+          ],
+        },
+      },
+      right: { kind: 'int', v: 0 },
+    })
+  })
+
+  it('subquery with an inner filter', () => {
+    const ast = query(db, 'vehicle')
+      .select('id')
+      .where(eq(subquery(db.vehicle.trips, count('*'), eq(db.trip.state, 'COMPLETED')), 1))
+      .toAST() as any
+    assert.deepStrictEqual(ast.select.left.query.select, {
+      kind: 'infix',
+      op: '=',
+      left: { kind: 'attr', ids: ['state'] },
+      right: { kind: 'str', v: 'COMPLETED' },
     })
   })
 })

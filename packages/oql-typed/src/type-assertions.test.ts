@@ -420,9 +420,10 @@ describe('type: filter operators', () => {
       .many()
   }
 
-  // --- count(*) subquery: (drivers {count(*)}) = 0 ---
+  // --- count(*) subquery: (trips {value: (count(*))}) = 0 ---
   async function _subquery() {
-    await query(db, 'vehicle').where(eq(subquery<number>(db.vehicle.trips, ['count(*)']), 0)).many()
+    const { count } = await import('./functions.js')
+    await query(db, 'vehicle').where(eq(subquery(db.vehicle.trips, count('*')), 0)).many()
   }
 })
 

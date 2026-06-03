@@ -148,38 +148,44 @@ isNull(ref(db.comment.parent))          // top-level comments
 &parent IS NULL
 ```
 
-## `subquery<T>(relation, projection, filter?)` — parenthesized subquery
+## `subquery(relation, projection, filter?)` — parenthesized subquery
 
-Use a scalar subquery as a value in another expression. The generic `<T>` tells TypeScript what type the subquery resolves to:
+Use a scalar subquery as a value in another expression. `projection` is a **typed expression** (`count('*')`, `sum(...)`, …); its element type becomes the subquery's scalar type, so `T` is inferred — no explicit type argument or raw OQL strings.
 
 <Tabs syncKey="subq">
   <TabItem label="Posts with no comments">
     ```typescript
-    import { subquery, eq } from '@vinctus/oql-typed'
+    import { subquery, count, eq } from '@vinctus/oql-typed'
 
     query(db, 'post')
       .select('id', 'title')
-      .where(eq(subquery<number>(db.post.comments, ['count(*)']), 0))
+      .where(eq(subquery(db.post.comments, count('*')), 0))
     ```
 
     ```oql
-    post {id title} [(comments {count(*)}) = :p0]
+    post {id title} [(comments {value: (count(*))}) = :p0]
     ```
   </TabItem>
   <TabItem label="Users with more than 10 posts">
     ```typescript
-    import { subquery, gt } from '@vinctus/oql-typed'
+    import { subquery, count, gt } from '@vinctus/oql-typed'
 
     query(db, 'user')
       .select('id', 'firstName')
-      .where(gt(subquery<number>(db.user.posts, ['count(*)']), 10))
+      .where(gt(subquery(db.user.posts, count('*')), 10))
     ```
 
     ```oql
-    user {id firstName} [(posts {count(*)}) > :p0]
+    user {id firstName} [(posts {value: (count(*))}) > :p0]
     ```
   </TabItem>
 </Tabs>
+
+An optional third argument scopes the inner rows:
+
+```typescript
+subquery(db.post.comments, count('*'), eq(db.comment.approved, true))
+```
 
 ## `alias(label, expr)` — aliased projection
 

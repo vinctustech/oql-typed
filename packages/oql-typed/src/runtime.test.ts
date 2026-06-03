@@ -14,8 +14,8 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { fn, ref, alias, aliasedRelation, currentTimestamp } from './expressions.js'
-import { sum, avg, min, max, concatOp } from './functions.js'
+import { fn, ref, alias, aliasedRelation, currentTimestamp, subquery } from './expressions.js'
+import { count, sum, avg, min, max, concatOp } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
 
@@ -684,6 +684,58 @@ describe('runtime: typed aggregates', () => {
       .select(alias('latest', max(db.user.lastLoginAt)))
       .toOQL()
     assert.ok(q2.includes('latest: (max(lastLoginAt))'))
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// subquery — scalar subquery used as a value
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: subquery', () => {
+  it('vehicles with zero trips: (trips {count(*)}) = 0', async () => {
+    const r = await query(db, 'vehicle')
+      .select('id')
+      .where(eq(subquery(db.vehicle.trips, count('*')), 0))
+      .many()
+    assert.deepStrictEqual(
+      r.map((v) => v.id),
+      [ID.v2],
+    )
+  })
+
+  it('vehicles with at least one trip: (trips {count(*)}) > 0', async () => {
+    const r = await query(db, 'vehicle')
+      .select('id')
+      .where(gt(subquery(db.vehicle.trips, count('*')), 0))
+      .many()
+    assert.deepStrictEqual(
+      r.map((v) => v.id),
+      [ID.v1],
+    )
+  })
+
+  it('exact count: (trips {count(*)}) = 2', async () => {
+    // v1 has t1 and t3; v2 has none
+    const r = await query(db, 'vehicle')
+      .select('id')
+      .where(eq(subquery(db.vehicle.trips, count('*')), 2))
+      .many()
+    assert.deepStrictEqual(
+      r.map((v) => v.id),
+      [ID.v1],
+    )
+  })
+
+  it('scalar subquery with an inner filter', async () => {
+    // v1's trips: t1 CONFIRMED, t3 COMPLETED -> exactly one COMPLETED
+    const r = await query(db, 'vehicle')
+      .select('id')
+      .where(eq(subquery(db.vehicle.trips, count('*'), eq(db.trip.state, 'COMPLETED')), 1))
+      .many()
+    assert.deepStrictEqual(
+      r.map((v) => v.id),
+      [ID.v1],
+    )
   })
 })
 
