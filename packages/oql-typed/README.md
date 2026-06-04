@@ -164,39 +164,45 @@ Access fields on related entities directly in filters:
 | `between` | `between(db.user.lastLoginAt, start, end)` |
 | `isNull`, `isNotNull` | `isNull(db.trip.vehicle)` |
 | `exists` | `exists(db.user.stores, eq(db.store.id, storeId))` |
-| `asc`, `desc` | `desc(db.user.lastLoginAt)` |
+| `asc`, `desc` (optional NULLS) | `desc(db.user.lastLoginAt)`, `asc(db.trip.scheduledAt, 'last')` |
 
 ## Expressions
 
 For OQL features beyond plain field comparisons:
 
 ```typescript
-import { fn, raw, ref, subquery, alias, aliasedRelation } from '@vinctus/oql-typed'
+import { fn, ref, subquery, alias, aliasedRelation, caseWhen, currentTimestamp } from '@vinctus/oql-typed'
 import { lower, upper, trim, length, concat, concatOp, coalesce, count, sum, avg, min, max } from '@vinctus/oql-typed'
 
-// Function call in a filter — fn(name, ...args)
-ilike(fn('concat', db.vehicle.make, raw("' '"), db.vehicle.model), '%toyota%')
+// Function call in a filter — fn(name, ...args). Bare strings are parameterized.
+ilike(fn('concat', db.vehicle.make, ' ', db.vehicle.model), '%toyota%')
 
 // Indexable concat — use concatOp() for PG `||` (IMMUTABLE, indexable)
-ilike(concatOp(db.user.firstName, raw("' '"), db.user.lastName), '%john%')
+ilike(concatOp(db.user.firstName, ' ', db.user.lastName), '%john%')
 
-// Reference operator (&) — check the FK column itself
+// Reference operator (&) — the FK column value itself; type inferred from the relation
 isNull(ref(db.trip.returnTripFor))                     // → &returnTripFor IS NULL
 
-// Subquery in a filter — (relation {projection}) op value
-eq(subquery<number>(db.vehicle.drivers, ['count(*)']), 0)
+// Database clock — compare a timestamp column against "now"
+lte(db.account.trialEndAt, currentTimestamp())         // → trialEndAt <= CURRENT_TIMESTAMP
+
+// Subquery as a value — projection is a typed expression; the scalar type T is inferred
+eq(subquery(db.vehicle.drivers, count('*')), 0)
 
 // Aliased projection — label: (expression)
 db.trip.select('id', alias('returnTripId', db.trip.returnTripFor.id))
 
-// Aliased sub-collection — outer label + typed inner projection
-db.user.select('id', aliasedRelation('shifts', 'trips', {
+// Aliased sub-collection — pass the relation ref; row shape inferred, fields type-checked
+db.user.select('id', aliasedRelation('shifts', db.user.trips, {
   fields: ['id', 'state'],
   where: eq(db.trip.state, 'CONFIRMED'),
 }))
 
-// Raw OQL escape hatch — for anything without a typed wrapper
-db.post.select('id', raw('count: sum(seats)'))
+// CASE expression — caseWhen(branches, else?). With `else` → T; without → T | null.
+db.trip.select('id', alias('priority', caseWhen(
+  [{ when: eq(db.trip.state, 'COMPLETED'), then: 2 }],
+  0,
+)))
 ```
 
 ## Mutations

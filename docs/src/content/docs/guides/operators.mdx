@@ -192,4 +192,4 @@ query(db, 'post')
 | Between | `between(f, lo, hi)` | `f BETWEEN :p AND :q` |
 | Null | `isNull(f)`, `isNotNull(f)` | `f IS NULL`, `f IS NOT NULL` |
 | Exists | `exists(rel)`, `exists(rel, filter)` | `EXISTS(rel)`, `EXISTS(rel [filter])` |
-| Order | `asc(f)`, `desc(f)` | `f ASC`, `f DESC` |
+| Order | `asc(f, nulls?)`, `desc(f, nulls?)` | `f ASC [NULLS FIRST\|LAST]`, `f DESC [NULLS FIRST\|LAST]` |
