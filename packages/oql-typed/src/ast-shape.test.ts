@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 
 import { typedOQL, type OQLInstance } from './db.js'
 import { query } from './query.js'
-import { eq, and, or, lt, inList, isNull, exists, ilike, desc } from './operators.js'
-import { alias, currentTimestamp, subquery } from './expressions.js'
+import { eq, and, or, lt, inList, isNull, exists, ilike, asc, desc } from './operators.js'
+import { alias, currentTimestamp, subquery, caseWhen } from './expressions.js'
 import { count, sum, concatOp } from './functions.js'
 import { schema } from './test-schema.js'
 
@@ -210,5 +210,47 @@ describe('toAST() shape', () => {
       left: { kind: 'attr', ids: ['state'] },
       right: { kind: 'str', v: 'COMPLETED' },
     })
+  })
+
+  it('caseWhen with ELSE', () => {
+    const ast = query(db, 'trip')
+      .select('id', alias('priority', caseWhen([{ when: eq(db.trip.state, 'COMPLETED'), then: 2 }], 1)))
+      .toAST() as any
+    assert.deepStrictEqual(ast.project[1], {
+      kind: 'expr',
+      label: 'priority',
+      expr: {
+        kind: 'case',
+        whens: [
+          {
+            cond: { kind: 'infix', op: '=', left: { kind: 'attr', ids: ['state'] }, right: { kind: 'str', v: 'COMPLETED' } },
+            expr: { kind: 'int', v: 2 },
+          },
+        ],
+        els: { kind: 'int', v: 1 },
+      },
+    })
+  })
+
+  it('caseWhen without ELSE omits els', () => {
+    const ast = query(db, 'trip')
+      .select('id', alias('flag', caseWhen([{ when: eq(db.trip.state, 'COMPLETED'), then: 1 }])))
+      .toAST() as any
+    const caseNode = ast.project[1].expr
+    assert.equal(caseNode.kind, 'case')
+    assert.equal('els' in caseNode, false)
+  })
+
+  it('asc with explicit NULLS placement', () => {
+    const ast = query(db, 'trip').select('id').orderBy(asc(db.trip.scheduledAt, 'last')).toAST() as any
+    assert.deepStrictEqual(ast.order, [{ expr: { kind: 'attr', ids: ['scheduledAt'] }, dir: 'ASC NULLS LAST' }])
+  })
+
+  it('asc/desc without NULLS use the bare direction', () => {
+    const ast = query(db, 'trip').select('id').orderBy(asc(db.trip.id), desc(db.trip.createdAt)).toAST() as any
+    assert.deepStrictEqual(ast.order, [
+      { expr: { kind: 'attr', ids: ['id'] }, dir: 'ASC' },
+      { expr: { kind: 'attr', ids: ['createdAt'] }, dir: 'DESC' },
+    ])
   })
 })

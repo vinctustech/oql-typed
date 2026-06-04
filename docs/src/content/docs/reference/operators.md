@@ -54,6 +54,7 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 | `subquery(rel, expr, filter?)` | `(rel {value: (expr)} [filter])` |
 | `alias(label, expr)` | `label: expression` |
 | `aliasedRelation(label, rel, spec)` | `label: rel {fields} [where] <orderBy>` |
+| `caseWhen(branches, else?)` | `CASE WHEN cond THEN result ... [ELSE result] END` |
 
 ## Typed function wrappers
 
@@ -73,5 +74,7 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 
 | Signature | OQL |
 |-----------|-----|
-| `asc(field)` | `field ASC` |
-| `desc(field)` | `field DESC` |
+| `asc(field, nulls?)` | `field ASC [NULLS FIRST\|LAST]` |
+| `desc(field, nulls?)` | `field DESC [NULLS FIRST\|LAST]` |
+
+`nulls` is `'first'` or `'last'`. Omitted, it uses SQL's default (`asc` → NULLS FIRST, `desc` → NULLS LAST).

@@ -14,7 +14,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { fn, ref, alias, aliasedRelation, currentTimestamp, subquery } from './expressions.js'
+import { fn, ref, alias, aliasedRelation, currentTimestamp, subquery, caseWhen } from './expressions.js'
 import { count, sum, avg, min, max, concatOp } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
@@ -735,6 +735,75 @@ describe('runtime: subquery', () => {
     assert.deepStrictEqual(
       r.map((v) => v.id),
       [ID.v1],
+    )
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// NULLS ordering control
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: NULLS ordering', () => {
+  it('asc NULLS FIRST vs NULLS LAST on a nullable column', async () => {
+    // scheduledAt: t1=Jun, t3=May, t2/t4=NULL. Secondary sort by id for determinism.
+    const first = await query(db, 'trip')
+      .select('id')
+      .orderBy(asc(db.trip.scheduledAt, 'first'), asc(db.trip.id))
+      .many()
+    assert.deepStrictEqual(
+      first.map((t) => t.id),
+      [ID.t2, ID.t4, ID.t3, ID.t1],
+    )
+
+    const last = await query(db, 'trip')
+      .select('id')
+      .orderBy(asc(db.trip.scheduledAt, 'last'), asc(db.trip.id))
+      .many()
+    assert.deepStrictEqual(
+      last.map((t) => t.id),
+      [ID.t3, ID.t1, ID.t2, ID.t4],
+    )
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// caseWhen — CASE WHEN ... THEN ... ELSE ... END
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: caseWhen', () => {
+  it('CASE WHEN with ELSE in an aliased projection', async () => {
+    const rows = await query(db, 'trip')
+      .select(
+        'id',
+        alias(
+          'priority',
+          caseWhen(
+            [
+              { when: eq(db.trip.state, 'COMPLETED'), then: 2 },
+              { when: eq(db.trip.state, 'CONFIRMED'), then: 1 },
+            ],
+            0,
+          ),
+        ),
+      )
+      .orderBy(asc(db.trip.id))
+      .many()
+    // t1 CONFIRMED->1, t2 REQUESTED->0, t3 COMPLETED->2, t4 CANCELLED->0
+    assert.deepStrictEqual(
+      rows.map((r) => r.priority),
+      [1, 0, 2, 0],
+    )
+  })
+
+  it('CASE WHEN without ELSE yields null on no match', async () => {
+    const rows = await query(db, 'trip')
+      .select('id', alias('flag', caseWhen([{ when: eq(db.trip.state, 'COMPLETED'), then: 1 }])))
+      .orderBy(asc(db.trip.id))
+      .many()
+    // only t3 is COMPLETED -> 1; others -> null
+    assert.deepStrictEqual(
+      rows.map((r) => r.flag),
+      [null, null, 1, null],
     )
   })
 })

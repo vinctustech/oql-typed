@@ -328,26 +328,38 @@ export interface OrderExpr {
   toAST(): ASTNode
 }
 
-export function asc(field: FieldRef<any> | RelationFieldRef<Schema, any, 'manyToOne'>): OrderExpr {
+// Optional NULLS placement. Defaults match SQL/OQL: asc -> NULLS FIRST,
+// desc -> NULLS LAST. Pass 'first'/'last' to override.
+export type NullsOrder = 'first' | 'last'
+
+export function asc(
+  field: FieldRef<any> | RelationFieldRef<Schema, any, 'manyToOne'>,
+  nulls?: NullsOrder,
+): OrderExpr {
+  const dir = nulls ? `ASC NULLS ${nulls.toUpperCase()}` : 'ASC'
   return {
     __orderExpr: true,
     toOQL() {
-      return `${(field as FieldRef).fieldName} ASC`
+      return `${(field as FieldRef).fieldName} ${dir}`
     },
     toAST() {
-      return { expr: fieldRefToAST(field), dir: 'ASC' }
+      return { expr: fieldRefToAST(field), dir }
     },
   }
 }
 
-export function desc(field: FieldRef<any> | RelationFieldRef<Schema, any, 'manyToOne'>): OrderExpr {
+export function desc(
+  field: FieldRef<any> | RelationFieldRef<Schema, any, 'manyToOne'>,
+  nulls?: NullsOrder,
+): OrderExpr {
+  const dir = nulls ? `DESC NULLS ${nulls.toUpperCase()}` : 'DESC'
   return {
     __orderExpr: true,
     toOQL() {
-      return `${(field as FieldRef).fieldName} DESC`
+      return `${(field as FieldRef).fieldName} ${dir}`
     },
     toAST() {
-      return { expr: fieldRefToAST(field), dir: 'DESC' }
+      return { expr: fieldRefToAST(field), dir }
     },
   }
 }

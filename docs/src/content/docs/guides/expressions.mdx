@@ -187,6 +187,32 @@ An optional third argument scopes the inner rows:
 subquery(db.post.comments, count('*'), eq(db.comment.approved, true))
 ```
 
+## `caseWhen(branches, else?)` — CASE expression
+
+A searched `CASE WHEN … THEN … [ELSE …] END`. Each branch is `{ when, then }`; the result type is inferred from the `then`/`else` values. With an `else` the result is non-null; without one it's `T | null` (SQL returns NULL when no branch matches). `then`/`else` accept a literal or any `OQLExpr`.
+
+```typescript
+import { caseWhen, eq, alias } from '@vinctus/oql-typed'
+
+query(db, 'trip').select(
+  'id',
+  alias(
+    'priority',
+    caseWhen(
+      [
+        { when: eq(db.trip.state, 'COMPLETED'), then: 2 },
+        { when: eq(db.trip.state, 'CONFIRMED'), then: 1 },
+      ],
+      0,
+    ),
+  ),
+)
+```
+
+```oql
+trip {id priority: (CASE WHEN state = :p0 THEN 2 WHEN state = :p1 THEN 1 ELSE 0 END)}
+```
+
 ## `alias(label, expr)` — aliased projection
 
 `alias('label', expr)` emits `label: expression` in the projection. The alias label and inferred type both flow into the result type.

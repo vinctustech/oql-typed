@@ -17,7 +17,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { alias, aliasedRelation, currentTimestamp, fn, ref, subquery } from './expressions.js'
+import { alias, aliasedRelation, currentTimestamp, fn, ref, subquery, caseWhen } from './expressions.js'
 import type { FieldRef, Prettify } from './types.js'
 
 import { schema, ID, type Role, type TripState } from './test-schema.js'
@@ -428,6 +428,21 @@ describe('type: filter operators', () => {
   async function _subquery() {
     const { count } = await import('./functions.js')
     await query(db, 'vehicle').where(eq(subquery(db.vehicle.trips, count('*')), 0)).many()
+  }
+
+  // --- caseWhen: result type inferred from then/else; nullable without ELSE ---
+  async function _caseWhen() {
+    const withElse = await query(db, 'trip')
+      .select('id', alias('priority', caseWhen([{ when: eq(db.trip.state, 'COMPLETED'), then: 2 }], 0)))
+      .one()
+    type _P = NonNullable<typeof withElse>['priority']
+    type _ = AssertTrue<AssertEqual<_P, number>>
+
+    const noElse = await query(db, 'trip')
+      .select('id', alias('flag', caseWhen([{ when: eq(db.trip.state, 'COMPLETED'), then: 1 }])))
+      .one()
+    type _F = NonNullable<typeof noElse>['flag']
+    type __ = AssertTrue<AssertEqual<_F, number | null>>
   }
 })
 

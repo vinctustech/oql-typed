@@ -8,7 +8,7 @@ import type {
   InferProjection,
 } from './types.js'
 import { and, type FilterArg, type FilterContext, type OrderExpr } from './operators.js'
-import { argToAST, fieldRefToAST, whereToAST, buildProjectionAST, type ASTNode } from './ast.js'
+import { argToAST, fieldRefToAST, operandToAST, whereToAST, buildProjectionAST, type ASTNode } from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // OQLExpr — can appear in both filter and projection positions
@@ -52,6 +52,56 @@ export function fn<T = unknown>(name: string, ...args: FnArg[]): OQLExpr<T> & Fi
     },
   }
   return expr
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// caseWhen(branches, else?) — searched CASE expression:
+//   caseWhen([{ when: eq(db.trip.state, 'COMPLETED'), then: 2 }], 1)
+//     →  CASE WHEN state = :p0 THEN 2 ELSE 1 END
+//
+// `then`/`else` accept a literal or an OQLExpr; the result type T is inferred
+// from them. With an `else` the result is T; without one it is T | null (SQL
+// yields NULL when no branch matches).
+// ══════════════════════════════════════════════════════════════════════
+
+export interface CaseBranch<T> {
+  readonly when: FilterArg
+  readonly then: T | OQLExpr<T>
+}
+
+export function caseWhen<T>(
+  branches: ReadonlyArray<CaseBranch<T>>,
+  elseValue: T | OQLExpr<T>,
+): OQLExpr<T> & FieldRef<T>
+export function caseWhen<T>(branches: ReadonlyArray<CaseBranch<T>>): OQLExpr<T | null> & FieldRef<T | null>
+export function caseWhen<T>(branches: ReadonlyArray<CaseBranch<T>>, elseValue?: T | OQLExpr<T>): any {
+  const operandOQL = (v: unknown, ctx: FilterContext): string =>
+    v !== null && typeof v === 'object' && '__oqlExpr' in (v as any)
+      ? (v as OQLExpr).toOQL(ctx)
+      : ctx.addParam(v)
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined,
+    entityName: '',
+    fieldName: '',
+    builder: null,
+    toOQL(ctx: FilterContext): string {
+      const whens = branches
+        .map((b) => `WHEN ${and(b.when).toOQL(ctx)} THEN ${operandOQL(b.then, ctx)}`)
+        .join(' ')
+      const elsePart = elseValue !== undefined ? ` ELSE ${operandOQL(elseValue, ctx)}` : ''
+      return `CASE ${whens}${elsePart} END`
+    },
+    toAST() {
+      const node: ASTNode = {
+        kind: 'case',
+        whens: branches.map((b) => ({ cond: and(b.when).toAST(), expr: operandToAST(b.then) })),
+      }
+      if (elseValue !== undefined) node.els = operandToAST(elseValue)
+      return node
+    },
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
