@@ -467,6 +467,19 @@ describe('type: filter operators', () => {
     type _T = (typeof o)['_type']
     type _ = AssertTrue<AssertEqual<_T, string>>
   }
+
+  // --- outer(): multi-hop correlated reference type-checks and infers the leaf type ---
+  async function _outerMultiHop() {
+    await query(db, 'trip')
+      .select('id')
+      .where(exists(db.trip.steps, ne(db.tripStep.place, outer(db.trip.store.place))))
+      .many()
+    // a column leaf two hops out infers its own scalar type; store.place is a
+    // nullable relation, so the chained id is `string | null`.
+    const o = outer(db.trip.store.place.id)
+    type _T = (typeof o)['_type']
+    type _ = AssertTrue<AssertEqual<_T, string | null>>
+  }
 })
 
 // ═══════════════════════════════════════════════════════════════════

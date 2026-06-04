@@ -163,10 +163,14 @@ export function ref<S extends Schema, Target extends keyof S>(
 
 // ══════════════════════════════════════════════════════════════════════
 // outer(field) — correlated reference to the ENCLOSING query's row from inside
-// a subquery. Prefixes the field with its owning entity's name so it resolves
-// to the outer scope instead of the subquery's own:
+// a subquery. Prefixes the field's path with the ROOT entity the ref chain was
+// started from (`db.<root>…`), so it resolves to the outer scope — matching how
+// OQL references the enclosing query (leading segment = outer entity name):
 //   exists(db.order.lineItems, ne(db.lineItem.warehouse, outer(db.order.warehouse)))
 //     →  EXISTS(lineItems [warehouse.id != order.warehouse.id])
+// The path may cross any number of relation hops; the root is preserved across
+// every hop (see createRelationRef), so a multi-hop ref works too:
+//   outer(db.trip.store.place)  →  trip.store.place.id
 // ══════════════════════════════════════════════════════════════════════
 
 export function outer<T>(field: FieldRef<T>): OQLExpr<T> & FieldRef<T>
@@ -175,9 +179,11 @@ export function outer<S extends Schema, Target extends keyof S>(
 ): OQLExpr<PKType<S, Target>> & FieldRef<PKType<S, Target>>
 export function outer(field: any): any {
   // fieldRefToAST resolves the field to its in-scope path (m2o -> ".id"); prefix
-  // with the owning entity name to reach the enclosing query's row.
+  // with the chain's ROOT entity (not the field's immediate owner) to reach the
+  // enclosing query's row across any number of relation hops.
   const inner = fieldRefToAST(field) as { ids: string[] }
-  const ids = [String(field.entityName), ...inner.ids]
+  const root = field.rootEntityName ?? field.entityName
+  const ids = [String(root), ...inner.ids]
   const path = ids.join('.')
   return {
     __oqlExpr: true,

@@ -60,12 +60,23 @@ function getEntityDef(schema: Schema, entityName: string): Record<string, any> {
   return entry as Record<string, any>
 }
 
-function createFieldRef(entityName: string, fieldName: string, builder: Column<any, any, any>) {
+// `rootEntityName` is the entity the ref chain was started from (`db.<root>…`).
+// It is preserved across relation hops so that `outer()` can emit a correlated
+// path (`root.path.to.col`) — matching how OQL references the enclosing query
+// (e.g. `trip.store.place.id`). `entityName` is the field's immediate owner and
+// is NOT the root once a chain crosses a relation.
+function createFieldRef(
+  entityName: string,
+  fieldName: string,
+  builder: Column<any, any, any>,
+  rootEntityName: string,
+) {
   return {
     __fieldRef: true,
     entityName,
     fieldName,
     builder,
+    rootEntityName,
   }
 }
 
@@ -74,7 +85,8 @@ function createRelationRef(
   entityName: string,
   fieldName: string,
   builder: Relation<any, any, any>,
-  pathPrefix?: string,
+  pathPrefix: string | undefined,
+  rootEntityName: string,
 ): any {
   const fullPath = pathPrefix ? `${pathPrefix}.${fieldName}` : fieldName
   const base = {
@@ -82,6 +94,7 @@ function createRelationRef(
     entityName,
     fieldName: fullPath,
     builder,
+    rootEntityName,
   }
 
   // For manyToOne, wrap in a Proxy that lazily resolves target entity fields
@@ -97,11 +110,12 @@ function createRelationRef(
         const targetField = targetDef[prop]
         if (!targetField) return undefined
 
+        // Thread the original root through every hop — see note above.
         if (targetField instanceof Column) {
-          return createFieldRef(targetName, `${fullPath}.${prop}`, targetField)
+          return createFieldRef(targetName, `${fullPath}.${prop}`, targetField, rootEntityName)
         }
         if (targetField instanceof Relation) {
-          return createRelationRef(schema, targetName, prop, targetField, fullPath)
+          return createRelationRef(schema, targetName, prop, targetField, fullPath, rootEntityName)
         }
         return undefined
       },
@@ -119,9 +133,9 @@ function createEntityHandle(oql: OQLInstance, schema: Schema, entityName: string
   }
   for (const [fieldName, builder] of Object.entries(def)) {
     if (builder instanceof Column) {
-      handle[fieldName] = createFieldRef(entityName, fieldName, builder)
+      handle[fieldName] = createFieldRef(entityName, fieldName, builder, entityName)
     } else if (builder instanceof Relation) {
-      handle[fieldName] = createRelationRef(schema, entityName, fieldName, builder)
+      handle[fieldName] = createRelationRef(schema, entityName, fieldName, builder, undefined, entityName)
     }
   }
   // Mix in query-starter methods so `db.user.select(...).where(...)` works.

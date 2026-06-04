@@ -864,6 +864,34 @@ describe('runtime: outer (correlated subquery)', () => {
       [ID.v1],
     )
   })
+
+  it('correlates across two relation hops (step place vs the trip’s store place)', async () => {
+    // t1: store s1 -> place p1; steps p1 (same), p2 (differs) -> has a differing step.
+    // t3: store s2 -> place p2; step p2 (same)             -> no differing step.
+    // t2/t4: no steps. A constant/wrong correlation would wrongly include t3.
+    const differs = await query(db, 'trip')
+      .select('id')
+      .where(exists(db.trip.steps, ne(db.tripStep.place, outer(db.trip.store.place))))
+      .orderBy(asc(db.trip.id))
+      .many()
+    assert.deepStrictEqual(
+      differs.map((t) => t.id),
+      [ID.t1],
+    )
+
+    // Complement: a step whose place EQUALS the trip’s own store place.
+    // t1 (step p1 == s1.place p1) and t3 (step p2 == s2.place p2) — each matched
+    // against its OWN store, proving the prefix is the outer trip, not a constant.
+    const same = await query(db, 'trip')
+      .select('id')
+      .where(exists(db.trip.steps, eq(db.tripStep.place, outer(db.trip.store.place))))
+      .orderBy(asc(db.trip.id))
+      .many()
+    assert.deepStrictEqual(
+      same.map((t) => t.id),
+      [ID.t1, ID.t3],
+    )
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════

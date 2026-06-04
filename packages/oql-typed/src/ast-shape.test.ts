@@ -280,4 +280,34 @@ describe('toAST() shape', () => {
       },
     })
   })
+
+  it('outer() prefixes the ROOT entity across multiple relation hops', () => {
+    // A two-hop correlated path must resolve to the chain's root (trip), not the
+    // field's immediate owner (place/store). m2o ref and its .id column agree.
+    assert.deepStrictEqual((outer(db.trip.store.place) as any).toAST(), {
+      kind: 'attr',
+      ids: ['trip', 'store', 'place', 'id'],
+    })
+    assert.deepStrictEqual((outer(db.trip.store.place.id) as any).toAST(), {
+      kind: 'attr',
+      ids: ['trip', 'store', 'place', 'id'],
+    })
+  })
+
+  it('outer() multi-hop inside a subquery (step place vs trip store place)', () => {
+    const ast = query(db, 'trip')
+      .select('id')
+      .where(exists(db.trip.steps, ne(db.tripStep.place, outer(db.trip.store.place))))
+      .toAST() as any
+    assert.deepStrictEqual(ast.select, {
+      kind: 'exists',
+      source: 'steps',
+      select: {
+        kind: 'infix',
+        op: '!=',
+        left: { kind: 'attr', ids: ['place', 'id'] },
+        right: { kind: 'attr', ids: ['trip', 'store', 'place', 'id'] },
+      },
+    })
+  })
 })
