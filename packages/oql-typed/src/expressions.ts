@@ -162,6 +162,40 @@ export function ref<S extends Schema, Target extends keyof S>(
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// outer(field) — correlated reference to the ENCLOSING query's row from inside
+// a subquery. Prefixes the field with its owning entity's name so it resolves
+// to the outer scope instead of the subquery's own:
+//   exists(db.order.lineItems, ne(db.lineItem.warehouse, outer(db.order.warehouse)))
+//     →  EXISTS(lineItems [warehouse.id != order.warehouse.id])
+// ══════════════════════════════════════════════════════════════════════
+
+export function outer<T>(field: FieldRef<T>): OQLExpr<T> & FieldRef<T>
+export function outer<S extends Schema, Target extends keyof S>(
+  field: RelationFieldRef<S, Target, 'manyToOne'>,
+): OQLExpr<PKType<S, Target>> & FieldRef<PKType<S, Target>>
+export function outer(field: any): any {
+  // fieldRefToAST resolves the field to its in-scope path (m2o -> ".id"); prefix
+  // with the owning entity name to reach the enclosing query's row.
+  const inner = fieldRefToAST(field) as { ids: string[] }
+  const ids = [String(field.entityName), ...inner.ids]
+  const path = ids.join('.')
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined,
+    entityName: '',
+    fieldName: path,
+    builder: null,
+    toOQL(_ctx: FilterContext): string {
+      return path
+    },
+    toAST(): ASTNode {
+      return { kind: 'attr', ids }
+    },
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // subquery(relation, projection, filter?) — a scalar subquery used as a value:
 //   eq(subquery(db.vehicle.trips, count('*')), 0)  →  (trips {value: (count(*))}) = 0
 //

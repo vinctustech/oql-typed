@@ -17,7 +17,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { alias, aliasedRelation, currentTimestamp, fn, ref, subquery, caseWhen } from './expressions.js'
+import { alias, aliasedRelation, currentTimestamp, fn, ref, outer, subquery, caseWhen } from './expressions.js'
 import type { FieldRef, Prettify } from './types.js'
 
 import { schema, ID, type Role, type TripState } from './test-schema.js'
@@ -455,6 +455,17 @@ describe('type: filter operators', () => {
       .one()
     type _L = NonNullable<typeof r>['label']
     type _ = AssertTrue<AssertEqual<_L, string>>
+  }
+
+  // --- outer(): correlated reference; a m2o FK resolves to the outer PK type ---
+  async function _outer() {
+    await query(db, 'vehicle')
+      .select('id')
+      .where(exists(db.vehicle.trips, ne(db.trip.store, outer(db.vehicle.store))))
+      .many()
+    const o = outer(db.vehicle.store)
+    type _T = (typeof o)['_type']
+    type _ = AssertTrue<AssertEqual<_T, string>>
   }
 })
 

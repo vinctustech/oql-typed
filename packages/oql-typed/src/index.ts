@@ -91,7 +91,7 @@ export type { FilterExpr, FilterArg, OrderExpr, FilterField } from './operators.
 // ══════════════════════════════════════════════════════════════════════
 // Expressions
 // ══════════════════════════════════════════════════════════════════════
-export { fn, ref, subquery, alias, aliasedRelation, currentTimestamp, caseWhen } from './expressions.js'
+export { fn, ref, outer, subquery, alias, aliasedRelation, currentTimestamp, caseWhen } from './expressions.js'
 export type { OQLExpr, AliasedRelationSpec, CaseBranch } from './expressions.js'
 
 // Typed function wrappers

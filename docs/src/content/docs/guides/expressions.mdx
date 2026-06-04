@@ -148,6 +148,25 @@ isNull(ref(db.comment.parent))          // top-level comments
 &parent IS NULL
 ```
 
+## `outer(field)` — correlated reference to the enclosing query
+
+Inside a subquery filter, a plain column resolves to the *subquery's* entity. `outer(field)` prefixes the field with its owning entity's name so it reaches back to the **enclosing** query's row — OQL's correlated reference.
+
+```typescript
+import { outer, exists, ne } from '@vinctus/oql-typed'
+
+// orders with a line item shipping from a different warehouse than the order's own
+query(db, 'order')
+  .select('id')
+  .where(exists(db.order.lineItems, ne(db.lineItem.warehouse, outer(db.order.warehouse))))
+```
+
+```oql
+order {id} [EXISTS(lineItems [warehouse.id != order.warehouse.id])]
+```
+
+Without `outer`, `db.order.warehouse` inside the subquery renders as a bare `warehouse.id` and resolves to the line item's warehouse, not the order's.
+
 ## `subquery(relation, projection, filter?)` — parenthesized subquery
 
 Use a scalar subquery as a value in another expression. `projection` is a **typed expression** (`count('*')`, `sum(...)`, …); its element type becomes the subquery's scalar type, so `T` is inferred — no explicit type argument or raw OQL strings.

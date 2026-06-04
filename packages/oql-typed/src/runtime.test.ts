@@ -14,7 +14,7 @@ import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
-import { fn, ref, alias, aliasedRelation, currentTimestamp, subquery, caseWhen } from './expressions.js'
+import { fn, ref, outer, alias, aliasedRelation, currentTimestamp, subquery, caseWhen } from './expressions.js'
 import { count, sum, avg, min, max, concatOp } from './functions.js'
 
 import { schema, seedSQL, dataSQL, ID } from './test-schema.js'
@@ -841,6 +841,27 @@ describe('runtime: column operands', () => {
     assert.deepStrictEqual(
       rows.map((r) => r.label),
       ['Toyota', 'Civic'],
+    )
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// outer() — correlated reference to the enclosing query from a subquery
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: outer (correlated subquery)', () => {
+  it('compares an inner column against the outer query row', async () => {
+    // vehicles that have a trip whose store differs from the vehicle's own store
+    const rows = await query(db, 'vehicle')
+      .select('id')
+      .where(exists(db.vehicle.trips, ne(db.trip.store, outer(db.vehicle.store))))
+      .orderBy(asc(db.vehicle.id))
+      .many()
+    // v1 (store s1): trips t1 (s1, same) + t3 (s2, different) -> matches.
+    // v2: no trips -> no match.
+    assert.deepStrictEqual(
+      rows.map((v) => v.id),
+      [ID.v1],
     )
   })
 })

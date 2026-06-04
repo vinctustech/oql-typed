@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { typedOQL, type OQLInstance } from './db.js'
 import { query } from './query.js'
 import { eq, ne, and, or, lt, inList, isNull, exists, ilike, asc, desc } from './operators.js'
-import { alias, currentTimestamp, subquery, caseWhen } from './expressions.js'
+import { alias, currentTimestamp, subquery, caseWhen, outer } from './expressions.js'
 import { count, sum, concatOp } from './functions.js'
 import { schema } from './test-schema.js'
 
@@ -261,6 +261,23 @@ describe('toAST() shape', () => {
       op: '!=',
       left: { kind: 'attr', ids: ['make'] },
       right: { kind: 'attr', ids: ['model'] },
+    })
+  })
+
+  it('outer() emits the outer-entity-prefixed attr inside a subquery', () => {
+    const ast = query(db, 'vehicle')
+      .select('id')
+      .where(exists(db.vehicle.trips, ne(db.trip.store, outer(db.vehicle.store))))
+      .toAST() as any
+    assert.deepStrictEqual(ast.select, {
+      kind: 'exists',
+      source: 'trips',
+      select: {
+        kind: 'infix',
+        op: '!=',
+        left: { kind: 'attr', ids: ['store', 'id'] },
+        right: { kind: 'attr', ids: ['vehicle', 'store', 'id'] },
+      },
     })
   })
 })
