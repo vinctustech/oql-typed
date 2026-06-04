@@ -38,15 +38,14 @@ export function fieldRefToAST(field: any): ASTNode {
   return { kind: 'attr', ids: String(field.fieldName).split('.') }
 }
 
-// Comparison RHS: an OQLExpr emits inline; anything else is a literal.
+// Comparison/CASE operand: an OQLExpr emits inline, a FieldRef emits as a
+// column reference, anything else is a literal.
 export function operandToAST(value: unknown): ASTNode {
-  if (
-    value &&
-    typeof value === 'object' &&
-    '__oqlExpr' in (value as any) &&
-    typeof (value as any).toAST === 'function'
-  ) {
-    return (value as any).toAST()
+  if (value && typeof value === 'object') {
+    if ('__oqlExpr' in (value as any) && typeof (value as any).toAST === 'function') {
+      return (value as any).toAST()
+    }
+    if ('__fieldRef' in (value as any)) return fieldRefToAST(value)
   }
   return litToAST(value)
 }

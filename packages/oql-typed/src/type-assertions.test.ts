@@ -444,6 +444,18 @@ describe('type: filter operators', () => {
     type _F = NonNullable<typeof noElse>['flag']
     type __ = AssertTrue<AssertEqual<_F, number | null>>
   }
+
+  // --- column references as comparison / CASE operands ---
+  async function _columnOperands() {
+    // column-to-column comparison type-checks (same element type)
+    await query(db, 'vehicle').where(ne(db.vehicle.make, db.vehicle.model)).many()
+    // CASE whose then/else are columns -> result type is the column's type
+    const r = await query(db, 'vehicle')
+      .select('id', alias('label', caseWhen([{ when: db.vehicle.active, then: db.vehicle.make }], db.vehicle.model)))
+      .one()
+    type _L = NonNullable<typeof r>['label']
+    type _ = AssertTrue<AssertEqual<_L, string>>
+  }
 })
 
 // ═══════════════════════════════════════════════════════════════════

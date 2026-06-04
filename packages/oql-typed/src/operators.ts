@@ -60,15 +60,14 @@ function resolveField(field: FilterField<any>, ctx: FilterContext): string {
 // ══════════════════════════════════════════════════════════════════════
 
 // Render a comparison's right-hand operand. An OQL expression (e.g.
-// currentTimestamp()) emits inline; any other value is parameterized.
+// currentTimestamp()) emits inline; a column (FieldRef) emits as a column
+// reference; any other value is parameterized.
 function renderOperand(value: unknown, ctx: FilterContext): string {
-  if (
-    value !== null &&
-    typeof value === 'object' &&
-    '__oqlExpr' in (value as any) &&
-    typeof (value as any).toOQL === 'function'
-  ) {
-    return (value as OQLExpr).toOQL(ctx)
+  if (value !== null && typeof value === 'object') {
+    if ('__oqlExpr' in (value as any) && typeof (value as any).toOQL === 'function') {
+      return (value as OQLExpr).toOQL(ctx)
+    }
+    if ('__fieldRef' in (value as any)) return resolveField(value as FilterField<any>, ctx)
   }
   return ctx.addParam(value)
 }
@@ -93,6 +92,7 @@ function compareImpl(field: any, op: string, value: unknown): FilterExpr {
 
 export function eq<T>(field: FieldRef<T>, value: NoInfer<T>): FilterExpr
 export function eq<T>(field: FieldRef<T>, value: OQLExpr<T>): FilterExpr
+export function eq<T>(field: FieldRef<T>, value: FieldRef<T>): FilterExpr
 export function eq(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): FilterExpr
 export function eq(field: any, value: any): FilterExpr {
   return compareImpl(field, '=', value)
@@ -100,6 +100,7 @@ export function eq(field: any, value: any): FilterExpr {
 
 export function ne<T>(field: FieldRef<T>, value: NoInfer<T>): FilterExpr
 export function ne<T>(field: FieldRef<T>, value: OQLExpr<T>): FilterExpr
+export function ne<T>(field: FieldRef<T>, value: FieldRef<T>): FilterExpr
 export function ne(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): FilterExpr
 export function ne(field: any, value: any): FilterExpr {
   return compareImpl(field, '!=', value)
@@ -107,6 +108,7 @@ export function ne(field: any, value: any): FilterExpr {
 
 export function gt<T>(field: FieldRef<T>, value: NoInfer<T>): FilterExpr
 export function gt<T>(field: FieldRef<T>, value: OQLExpr<T>): FilterExpr
+export function gt<T>(field: FieldRef<T>, value: FieldRef<T>): FilterExpr
 export function gt(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): FilterExpr
 export function gt(field: any, value: any): FilterExpr {
   return compareImpl(field, '>', value)
@@ -114,6 +116,7 @@ export function gt(field: any, value: any): FilterExpr {
 
 export function gte<T>(field: FieldRef<T>, value: NoInfer<T>): FilterExpr
 export function gte<T>(field: FieldRef<T>, value: OQLExpr<T>): FilterExpr
+export function gte<T>(field: FieldRef<T>, value: FieldRef<T>): FilterExpr
 export function gte(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): FilterExpr
 export function gte(field: any, value: any): FilterExpr {
   return compareImpl(field, '>=', value)
@@ -121,6 +124,7 @@ export function gte(field: any, value: any): FilterExpr {
 
 export function lt<T>(field: FieldRef<T>, value: NoInfer<T>): FilterExpr
 export function lt<T>(field: FieldRef<T>, value: OQLExpr<T>): FilterExpr
+export function lt<T>(field: FieldRef<T>, value: FieldRef<T>): FilterExpr
 export function lt(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): FilterExpr
 export function lt(field: any, value: any): FilterExpr {
   return compareImpl(field, '<', value)
@@ -128,6 +132,7 @@ export function lt(field: any, value: any): FilterExpr {
 
 export function lte<T>(field: FieldRef<T>, value: NoInfer<T>): FilterExpr
 export function lte<T>(field: FieldRef<T>, value: OQLExpr<T>): FilterExpr
+export function lte<T>(field: FieldRef<T>, value: FieldRef<T>): FilterExpr
 export function lte(field: RelationFieldRef<Schema, any, 'manyToOne'>, value: string | number): FilterExpr
 export function lte(field: any, value: any): FilterExpr {
   return compareImpl(field, '<=', value)

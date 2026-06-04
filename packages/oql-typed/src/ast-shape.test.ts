@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 
 import { typedOQL, type OQLInstance } from './db.js'
 import { query } from './query.js'
-import { eq, and, or, lt, inList, isNull, exists, ilike, asc, desc } from './operators.js'
+import { eq, ne, and, or, lt, inList, isNull, exists, ilike, asc, desc } from './operators.js'
 import { alias, currentTimestamp, subquery, caseWhen } from './expressions.js'
 import { count, sum, concatOp } from './functions.js'
 import { schema } from './test-schema.js'
@@ -252,5 +252,15 @@ describe('toAST() shape', () => {
       { expr: { kind: 'attr', ids: ['id'] }, dir: 'ASC' },
       { expr: { kind: 'attr', ids: ['createdAt'] }, dir: 'DESC' },
     ])
+  })
+
+  it('column-to-column comparison emits an attr operand (not a param)', () => {
+    const ast = query(db, 'vehicle').select('id').where(ne(db.vehicle.make, db.vehicle.model)).toAST() as any
+    assert.deepStrictEqual(ast.select, {
+      kind: 'infix',
+      op: '!=',
+      left: { kind: 'attr', ids: ['make'] },
+      right: { kind: 'attr', ids: ['model'] },
+    })
   })
 })

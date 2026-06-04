@@ -809,6 +809,43 @@ describe('runtime: caseWhen', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// Column references as comparison / CASE operands
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: column operands', () => {
+  it('column-to-column comparison', async () => {
+    const differ = await query(db, 'vehicle')
+      .select('id')
+      .where(ne(db.vehicle.make, db.vehicle.model))
+      .orderBy(asc(db.vehicle.id))
+      .many()
+    // v1 Toyota/Camry, v2 Honda/Civic — both differ
+    assert.deepStrictEqual(
+      differ.map((v) => v.id),
+      [ID.v1, ID.v2],
+    )
+
+    const same = await query(db, 'vehicle').select('id').where(eq(db.vehicle.make, db.vehicle.model)).many()
+    assert.deepStrictEqual(same, [])
+  })
+
+  it('CASE with column results', async () => {
+    const rows = await query(db, 'vehicle')
+      .select(
+        'id',
+        alias('label', caseWhen([{ when: db.vehicle.active, then: db.vehicle.make }], db.vehicle.model)),
+      )
+      .orderBy(asc(db.vehicle.id))
+      .many()
+    // v1 active -> make 'Toyota'; v2 inactive -> model 'Civic'
+    assert.deepStrictEqual(
+      rows.map((r) => r.label),
+      ['Toyota', 'Civic'],
+    )
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
 // findBy — sugar for .where(eq(...))
 // ═══════════════════════════════════════════════════════════════════
 

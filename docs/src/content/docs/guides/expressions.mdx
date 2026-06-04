@@ -189,7 +189,13 @@ subquery(db.post.comments, count('*'), eq(db.comment.approved, true))
 
 ## `caseWhen(branches, else?)` — CASE expression
 
-A searched `CASE WHEN … THEN … [ELSE …] END`. Each branch is `{ when, then }`; the result type is inferred from the `then`/`else` values. With an `else` the result is non-null; without one it's `T | null` (SQL returns NULL when no branch matches). `then`/`else` accept a literal or any `OQLExpr`.
+A searched `CASE WHEN … THEN … [ELSE …] END`. Each branch is `{ when, then }`; the result type is inferred from the `then`/`else` values. With an `else` the result is non-null; without one it's `T | null` (SQL returns NULL when no branch matches). `then`/`else` accept a literal, a column (`db.x.field`), or any `OQLExpr`.
+
+Comparison operators (`eq`/`ne`/`gt`/…) likewise accept a **column** on the value side, so you can compare two columns directly:
+
+```typescript
+ne(db.vehicle.make, db.vehicle.model)   // → make != model  (column-to-column, not a bound param)
+```
 
 ```typescript
 import { caseWhen, eq, alias } from '@vinctus/oql-typed'

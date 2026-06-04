@@ -66,19 +66,25 @@ export function fn<T = unknown>(name: string, ...args: FnArg[]): OQLExpr<T> & Fi
 
 export interface CaseBranch<T> {
   readonly when: FilterArg
-  readonly then: T | OQLExpr<T>
+  readonly then: T | OQLExpr<T> | FieldRef<T>
 }
 
 export function caseWhen<T>(
   branches: ReadonlyArray<CaseBranch<T>>,
-  elseValue: T | OQLExpr<T>,
+  elseValue: T | OQLExpr<T> | FieldRef<T>,
 ): OQLExpr<T> & FieldRef<T>
 export function caseWhen<T>(branches: ReadonlyArray<CaseBranch<T>>): OQLExpr<T | null> & FieldRef<T | null>
-export function caseWhen<T>(branches: ReadonlyArray<CaseBranch<T>>, elseValue?: T | OQLExpr<T>): any {
-  const operandOQL = (v: unknown, ctx: FilterContext): string =>
-    v !== null && typeof v === 'object' && '__oqlExpr' in (v as any)
-      ? (v as OQLExpr).toOQL(ctx)
-      : ctx.addParam(v)
+export function caseWhen<T>(
+  branches: ReadonlyArray<CaseBranch<T>>,
+  elseValue?: T | OQLExpr<T> | FieldRef<T>,
+): any {
+  const operandOQL = (v: unknown, ctx: FilterContext): string => {
+    if (v !== null && typeof v === 'object') {
+      if ('__oqlExpr' in (v as any)) return (v as OQLExpr).toOQL(ctx)
+      if ('__fieldRef' in (v as any)) return (v as FieldRef).fieldName
+    }
+    return ctx.addParam(v)
+  }
   return {
     __oqlExpr: true,
     __fieldRef: true,
