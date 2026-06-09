@@ -263,6 +263,26 @@ describe('type: projection inference', () => {
     >
   }
 
+  // --- Paginated sub-collection: limit/offset leave the result type as T[] ---
+  async function _paginated() {
+    const r = await query(db, 'store')
+      .select('id', {
+        trips: {
+          fields: ['id', 'seats'],
+          orderBy: [desc(db.trip.createdAt)],
+          limit: 1,
+          offset: 1,
+        },
+      })
+      .one()
+    type _ = AssertTrue<
+      AssertEqual<
+        typeof r,
+        { id: string; trips: { id: string; seats: number }[] } | undefined
+      >
+    >
+  }
+
   // --- Filtered sub-collection: fields shorthand (single string) ---
   async function _filteredShorthand() {
     const r = await query(db, 'store')
@@ -346,6 +366,17 @@ describe('type: projection negatives', () => {
     const r = await query(db, 'user').select('id').one()
     // @ts-expect-error — firstName wasn't selected
     r?.firstName
+  }
+
+  async function _paginationWrongType() {
+    await query(db, 'store')
+      // @ts-expect-error — limit must be a number, not a string
+      .select('id', { trips: { fields: ['id'], limit: '1' } })
+      .one()
+    await query(db, 'store')
+      // @ts-expect-error — offset must be a number, not a string
+      .select('id', { trips: { fields: ['id'], offset: '1' } })
+      .one()
   }
 })
 

@@ -115,6 +115,23 @@ describe('toAST() shape', () => {
     ])
   })
 
+  it('paginated nested relation sets limit/offset on the rel node', () => {
+    const ast = query(db, 'store')
+      .select('id', {
+        trips: { fields: ['id'], orderBy: [desc(db.trip.createdAt)], limit: 1, offset: 1 },
+      })
+      .toAST() as any
+    assert.deepStrictEqual(ast.project[1], {
+      kind: 'rel',
+      label: 'trips',
+      source: 'trips',
+      project: [{ kind: 'field', name: 'id' }],
+      order: [{ expr: { kind: 'attr', ids: ['createdAt'] }, dir: 'DESC' }],
+      limit: 1,
+      offset: 1,
+    })
+  })
+
   it('aliased aggregate projection', () => {
     const ast = query(db, 'vehicle').select(alias('total', sum(db.vehicle.seats))).toAST() as any
     assert.deepStrictEqual(ast.project, [

@@ -130,7 +130,7 @@ Scalars as string args, relations as objects:
 
 ### Filtered sub-collections
 
-Add `where` and `orderBy` to a nested relation:
+Add `where`, `orderBy`, `limit`, and `offset` to a nested relation. `limit`/`offset` paginate a to-many relation just like the top-level builder (emitted as `|limit, offset|` after `orderBy`); the result type stays `T[]`:
 
 ```typescript
 .select('id', 'name', {
@@ -138,6 +138,8 @@ Add `where` and `orderBy` to a nested relation:
     fields: ['id', 'state', 'seats'],
     where: ne(db.trip.state, 'COMPLETED'),
     orderBy: [desc(db.trip.createdAt)],
+    limit: 10,                               // the 10 most recent per row
+    offset: 0,
   },
 })
 ```

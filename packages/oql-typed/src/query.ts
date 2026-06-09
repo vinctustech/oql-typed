@@ -19,7 +19,7 @@ import { buildProjectionAST, litToAST } from './ast.js'
 
 function isFilteredSpec(
   v: any,
-): v is { fields: any; where?: FilterArg; orderBy?: readonly OrderExpr[] } {
+): v is { fields: any; where?: FilterArg; orderBy?: readonly OrderExpr[]; limit?: number; offset?: number } {
   return v !== null && typeof v === 'object' && !Array.isArray(v) && 'fields' in v
 }
 
@@ -38,6 +38,11 @@ function buildProjection(args: readonly any[], ctx: FilterContext): string {
           if (value.where) s += ` [${and(value.where).toOQL(ctx)}]`
           if (value.orderBy && value.orderBy.length > 0) {
             s += ` <${value.orderBy.map((o: OrderExpr) => o.toOQL()).join(', ')}>`
+          }
+          if (value.offset !== undefined || value.limit !== undefined) {
+            const limit = value.limit ?? ''
+            const offset = value.offset ?? ''
+            s += ` |${limit}${offset !== '' ? `, ${offset}` : ''}|`
           }
           parts.push(s)
         } else if (Array.isArray(value) && value.length > 0) {

@@ -157,6 +157,8 @@ export interface FilteredRelationSpec<S extends Schema, Target extends keyof S> 
   readonly fields: ProjectionArg<S, Target> | readonly ProjectionArg<S, Target>[]
   readonly where?: FilterExprShape | FieldRef<boolean>
   readonly orderBy?: readonly OrderExprShape[]
+  readonly limit?: number
+  readonly offset?: number
 }
 
 // Opaque shapes used only for type-level plumbing (operators define their own)

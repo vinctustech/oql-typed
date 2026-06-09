@@ -98,6 +98,8 @@ export function buildProjectionAST(args: readonly any[]): ASTNode[] {
           const node: ASTNode = { kind: 'rel', label: key, source: key, project: buildProjectionAST(fields) }
           if (value.where) node.select = whereToAST(value.where)
           if (value.orderBy && value.orderBy.length > 0) node.order = value.orderBy.map((o: any) => o.toAST())
+          if (value.limit !== undefined) node.limit = value.limit
+          if (value.offset !== undefined) node.offset = value.offset
           out.push(node)
         } else if (Array.isArray(value) && value.length > 0) {
           out.push({ kind: 'rel', label: key, source: key, project: buildProjectionAST(value) })

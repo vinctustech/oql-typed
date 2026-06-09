@@ -263,6 +263,68 @@ describe('runtime: projections', () => {
     assert.equal(arrayForm.queryStr, stringForm.queryStr)
   })
 
+  it('paginated sub-collection: limit', async () => {
+    // s1 has 2 trips (t1 Jun 1, t2 Jun 2). Desc by createdAt, limit 1 -> just t2.
+    const r = await query(db, 'store')
+      .select('id', {
+        trips: {
+          fields: ['id', 'state'],
+          orderBy: [desc(db.trip.createdAt)],
+          limit: 1,
+        },
+      })
+      .where(eq(db.store.id, ID.s1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.trips.length, 1)
+    assert.equal(r.trips[0].id, ID.t2)
+  })
+
+  it('paginated sub-collection: limit + offset', async () => {
+    // Skip the first of the desc-ordered pair -> t1.
+    const r = await query(db, 'store')
+      .select('id', {
+        trips: {
+          fields: ['id', 'state'],
+          orderBy: [desc(db.trip.createdAt)],
+          limit: 1,
+          offset: 1,
+        },
+      })
+      .where(eq(db.store.id, ID.s1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.trips.length, 1)
+    assert.equal(r.trips[0].id, ID.t1)
+  })
+
+  it('paginated sub-collection: offset-only', async () => {
+    // Offset 1 with no limit -> the remaining trip after the first.
+    const r = await query(db, 'store')
+      .select('id', {
+        trips: {
+          fields: ['id'],
+          orderBy: [desc(db.trip.createdAt)],
+          offset: 1,
+        },
+      })
+      .where(eq(db.store.id, ID.s1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.trips.length, 1)
+    assert.equal(r.trips[0].id, ID.t1)
+  })
+
+  it('paginated sub-collection: emits |limit, offset| after orderBy', () => {
+    const { queryStr } = query(db, 'store')
+      .select('id', {
+        trips: { fields: ['id'], orderBy: [desc(db.trip.createdAt)], limit: 1, offset: 1 },
+      })
+      .where(eq(db.store.id, ID.s1))
+      .toOQL()
+    assert.match(queryStr, /trips \{id\} <createdAt DESC> \|1, 1\|/)
+  })
+
   it('aliased projection: returnTripId: (returnTripFor.id)', async () => {
     const r = await query(db, 'trip')
       .select('id', alias('returnTripId', db.trip.returnTripFor.id))

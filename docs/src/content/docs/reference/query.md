@@ -39,9 +39,13 @@ Variadic. Scalars are strings, relations are objects. Returns a `QueryBuilder` w
     fields: ['id', 'title'],
     where: ne(db.post.status, 'ARCHIVED'),
     orderBy: [desc(db.post.createdAt)],
+    limit: 10,            // optional — paginate the sub-collection
+    offset: 0,            // optional — emitted as |limit, offset| after orderBy
   },
 })
 ```
+
+The sub-collection long form accepts `fields` plus optional `where`, `orderBy`, `limit`, and `offset`. `limit`/`offset` paginate a to-many relation exactly like the top-level builder; the result type stays `T[]`.
 
 If `.select()` is not called, the result includes all scalar fields (`InferDefaultProjection`).
 

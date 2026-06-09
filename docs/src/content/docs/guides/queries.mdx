@@ -250,7 +250,7 @@ post <publishedAt DESC, id ASC> |50, 0|
 
 ## Filtered sub-collections
 
-Nested relations can carry their own `where` and `orderBy`. Use the `{ fields, where, orderBy }` long form:
+Nested relations can carry their own `where`, `orderBy`, `limit`, and `offset`. Use the `{ fields, where, orderBy, limit, offset }` long form:
 
 <Tabs syncKey="sub-collection">
   <TabItem label="TypeScript">
@@ -272,6 +272,37 @@ Nested relations can carry their own `where` and `orderBy`. Use the `{ fields, w
       id
       firstName
       posts {id title status} [status != :p0] <createdAt DESC>
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+### Paginating a sub-collection
+
+`limit` and `offset` paginate a to-many relation the same way they paginate a top-level query — they emit the `|limit, offset|` segment after `orderBy`. Pair them with `orderBy` so the page boundaries are deterministic. The result type is unchanged: a paginated to-many relation is still `T[]`.
+
+<Tabs syncKey="sub-collection-paginate">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { query, desc } from '@vinctus/oql-typed'
+
+    // The 10 most recent posts per user
+    query(db, 'user').select('id', 'firstName', {
+      posts: {
+        fields: ['id', 'title'],
+        orderBy: [desc(db.post.createdAt)],
+        limit: 10,
+        offset: 0,
+      },
+    })
+    ```
+  </TabItem>
+  <TabItem label="Generated OQL">
+    ```oql
+    user {
+      id
+      firstName
+      posts {id title} <createdAt DESC> |10, 0|
     }
     ```
   </TabItem>
