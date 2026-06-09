@@ -160,6 +160,7 @@ Access fields on related entities directly in filters:
 | `eq`, `ne`, `gt`, `gte`, `lt`, `lte` | `eq(db.user.enabled, true)` |
 | `and`, `or`, `not` | `and(eq(...), or(...))` |
 | `inList`, `notInList` | `inList(db.user.role, ['ADMIN', 'DRIVER'])` |
+| `arrayContains` (scalar in array column) | `arrayContains(db.zone.tags, 'vip')` → `:p = ANY(tags)` |
 | `like`, `ilike` | `ilike(db.user.firstName, '%john%')` |
 | `between` | `between(db.user.lastLoginAt, start, end)` |
 | `isNull`, `isNotNull` | `isNull(db.trip.vehicle)` |

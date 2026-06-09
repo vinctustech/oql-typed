@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 
 import { typedOQL, type OQLInstance } from './db.js'
 import { query } from './query.js'
-import { eq, ne, and, or, lt, inList, isNull, exists, ilike, asc, desc } from './operators.js'
+import { eq, ne, and, or, lt, inList, isNull, exists, ilike, asc, desc, arrayContains } from './operators.js'
 import { alias, currentTimestamp, subquery, caseWhen, outer } from './expressions.js'
 import { count, sum, concatOp } from './functions.js'
 import { schema } from './test-schema.js'
@@ -64,6 +64,17 @@ describe('toAST() shape', () => {
         { kind: 'int', v: 2 },
         { kind: 'int', v: 4 },
       ],
+    })
+  })
+
+  it('arrayContains emits an arraycomp node (:p = ANY(col))', () => {
+    const ast = query(db, 'zone').select('id').where(arrayContains(db.zone.tags, 'vip')).toAST() as any
+    assert.deepStrictEqual(ast.select, {
+      kind: 'arraycomp',
+      left: { kind: 'str', v: 'vip' },
+      op: '=',
+      quantifier: 'ANY',
+      array: { kind: 'attr', ids: ['tags'] },
     })
   })
 

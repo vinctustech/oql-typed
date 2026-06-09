@@ -75,6 +75,7 @@ export {
   not,
   inList,
   notInList,
+  arrayContains,
   like,
   ilike,
   between,

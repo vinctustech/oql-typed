@@ -15,6 +15,8 @@ import {
   oneToOne,
   enumType,
   float,
+  textArray,
+  integerArray,
 } from './schema.js'
 
 export type Role = 'ADMIN' | 'DISPATCHER' | 'DRIVER'
@@ -115,6 +117,8 @@ export const schema = defineSchema({
     geometry: text(),
     enabled: boolean(),
     restricted: boolean(),
+    tags: textArray(),
+    sectors: integerArray(),
     store: manyToOne('store', { column: 'store_id' }),
   }),
 })
@@ -186,6 +190,8 @@ CREATE TABLE zones (
   geometry TEXT NOT NULL,
   enabled BOOLEAN NOT NULL,
   restricted BOOLEAN NOT NULL,
+  tags TEXT[] NOT NULL,
+  sectors INTEGER[] NOT NULL,
   store_id UUID REFERENCES stores(id)
 );
 CREATE TABLE trips (
@@ -259,8 +265,8 @@ INSERT INTO customers VALUES ('${ID.c2}', 'Eve', 'Black', NULL, '555-0002', '${I
 INSERT INTO customers_places VALUES ('${ID.c1}', '${ID.p1}');
 INSERT INTO customers_places VALUES ('${ID.c1}', '${ID.p2}');
 
-INSERT INTO zones VALUES ('${ID.z1}', 'North', '#0000ff', 'poly1', true, false, '${ID.s1}');
-INSERT INTO zones VALUES ('${ID.z2}', 'South', '#ff00ff', 'poly2', true, true, '${ID.s1}');
+INSERT INTO zones VALUES ('${ID.z1}', 'North', '#0000ff', 'poly1', true, false, ARRAY['vip', 'priority'], ARRAY[1, 2], '${ID.s1}');
+INSERT INTO zones VALUES ('${ID.z2}', 'South', '#ff00ff', 'poly2', true, true, ARRAY['standard'], ARRAY[3], '${ID.s1}');
 
 INSERT INTO trips VALUES ('${ID.t1}', 'CONFIRMED', 2, 'VIP guest', '2024-06-01T10:00:00Z', '2024-06-01T12:00:00Z', '${ID.v1}', '${ID.s1}', '${ID.c1}', NULL, '${ID.z1}');
 INSERT INTO trips VALUES ('${ID.t2}', 'REQUESTED', 1, NULL, '2024-06-02T14:00:00Z', NULL, NULL, '${ID.s1}', '${ID.c2}', NULL, NULL);

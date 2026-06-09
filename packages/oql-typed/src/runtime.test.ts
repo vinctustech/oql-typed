@@ -13,7 +13,7 @@ import { typedOQL } from './db.js'
 import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
-import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
+import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
 import { fn, ref, outer, alias, aliasedRelation, currentTimestamp, subquery, caseWhen } from './expressions.js'
 import { count, sum, avg, min, max, concatOp } from './functions.js'
 
@@ -372,6 +372,30 @@ describe('runtime: filters', () => {
   it('inList with literal array', async () => {
     const r = await query(db, 'trip').where(inList(db.trip.state, ['CONFIRMED', 'REQUESTED'])).many()
     assert.equal(r.length, 2)
+  })
+
+  it('arrayContains: scalar membership in a text[] column', async () => {
+    const vip = await query(db, 'zone').select('id').where(arrayContains(db.zone.tags, 'vip')).many()
+    assert.deepStrictEqual(
+      vip.map((z) => z.id),
+      [ID.z1], // z1 tags ['vip','priority']; z2 ['standard']
+    )
+
+    const none = await query(db, 'zone').where(arrayContains(db.zone.tags, 'missing')).many()
+    assert.equal(none.length, 0)
+  })
+
+  it('arrayContains: scalar membership in an integer[] column', async () => {
+    const r = await query(db, 'zone').select('id').where(arrayContains(db.zone.sectors, 3)).many()
+    assert.deepStrictEqual(
+      r.map((z) => z.id),
+      [ID.z2], // z2 sectors [3]; z1 [1,2]
+    )
+  })
+
+  it('arrayContains emits :p = ANY(col)', () => {
+    const { queryStr } = query(db, 'zone').select('id').where(arrayContains(db.zone.tags, 'vip')).toOQL()
+    assert.match(queryStr, /= ANY\(tags\)/)
   })
 
   it('EXISTS with inner filter', async () => {

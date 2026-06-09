@@ -16,7 +16,7 @@ import { typedOQL } from './db.js'
 import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
-import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc } from './operators.js'
+import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
 import { alias, aliasedRelation, currentTimestamp, fn, ref, outer, subquery, caseWhen } from './expressions.js'
 import type { FieldRef, Prettify } from './types.js'
 
@@ -480,6 +480,12 @@ describe('type: filter operators', () => {
     type _T = (typeof o)['_type']
     type _ = AssertTrue<AssertEqual<_T, string | null>>
   }
+
+  // --- arrayContains: value must match the array column's element type ---
+  async function _arrayContains() {
+    await query(db, 'zone').where(arrayContains(db.zone.tags, 'vip')).many() // text[] <- string
+    await query(db, 'zone').where(arrayContains(db.zone.sectors, 3)).many() // integer[] <- number
+  }
 })
 
 // ═══════════════════════════════════════════════════════════════════
@@ -502,6 +508,13 @@ describe('type: filter operator negatives', () => {
   async function _ilikeOnNonString() {
     // @ts-expect-error — ilike requires FieldRef<string>, seats is number
     ilike(db.trip.seats, '%2%')
+  }
+
+  async function _arrayContainsWrongElement() {
+    // @ts-expect-error — tags is text[], so the value must be a string, not a number
+    arrayContains(db.zone.tags, 123)
+    // @ts-expect-error — sectors is integer[], so the value must be a number, not a string
+    arrayContains(db.zone.sectors, 'x')
   }
 })
 

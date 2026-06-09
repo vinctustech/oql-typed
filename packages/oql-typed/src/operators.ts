@@ -234,6 +234,30 @@ export function notInList(field: any, values: any[]): FilterExpr {
   }
 }
 
+// arrayContains(arrayColumn, value) — is `value` a member of the array-typed
+// column? Emits Postgres `:p = ANY(col)`. The inverse of inList (a scalar
+// column IN a JS array); here the column is the array and the value is scalar.
+// `value` is constrained to the column's element type.
+export function arrayContains<T>(field: FieldRef<T[]>, value: NoInfer<T>): FilterExpr
+export function arrayContains<T>(field: FieldRef<T[] | null>, value: NoInfer<T>): FilterExpr
+export function arrayContains(field: any, value: any): FilterExpr {
+  return {
+    __filterExpr: true,
+    toOQL(ctx) {
+      return `${ctx.addParam(value)} = ANY(${resolveField(field, ctx)})`
+    },
+    toAST() {
+      return {
+        kind: 'arraycomp',
+        left: litToAST(value),
+        op: '=',
+        quantifier: 'ANY',
+        array: fieldRefToAST(field),
+      }
+    },
+  }
+}
+
 // LIKE/ILIKE accept nullable string fields too — in SQL, `NULL LIKE 'x'` is NULL
 // (treated as false by the filter), not an error.
 export function like(field: FieldRef<string> | FieldRef<string | null>, pattern: string): FilterExpr {

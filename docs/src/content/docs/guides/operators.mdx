@@ -101,6 +101,22 @@ role IN :p0
 status NOT IN :p0
 ```
 
+### Membership in an array-typed column
+
+`inList` asks "is this **scalar column** one of these JS values". `arrayContains` is the inverse: "is this **scalar value** a member of this **array-typed column**" (`textArray()` / `integerArray()`). It lowers to Postgres `value = ANY(column)`. The value is constrained to the column's element type — a `text[]` column rejects a number, an `integer[]` column rejects a string.
+
+```typescript
+import { arrayContains } from '@vinctus/oql-typed'
+
+arrayContains(db.zone.tags, 'vip') // tags is text[]
+arrayContains(db.zone.sectors, 3) // sectors is integer[]
+```
+
+```oql
+:p0 = ANY(tags)
+:p0 = ANY(sectors)
+```
+
 ## String match
 
 `like` and `ilike` also accept `FieldRef<string | null>`. In SQL `NULL LIKE 'x'` evaluates to `NULL`, which the filter treats as false.
@@ -188,6 +204,7 @@ query(db, 'post')
 | Greater / less | `gt/gte/lt/lte(f, v)` | `f > :p`, `f >= :p`, ... |
 | And / or / not | `and(a, b)`, `or(a, b)`, `not(a)` | `a AND b`, `(a OR b)`, `NOT (a)` |
 | In list | `inList(f, vs)`, `notInList(f, vs)` | `f IN :p`, `f NOT IN :p` |
+| Array membership | `arrayContains(arrayF, v)` | `:p = ANY(arrayF)` |
 | String | `like(f, p)`, `ilike(f, p)` | `f LIKE :p`, `f ILIKE :p` |
 | Between | `between(f, lo, hi)` | `f BETWEEN :p AND :q` |
 | Null | `isNull(f)`, `isNotNull(f)` | `f IS NULL`, `f IS NOT NULL` |

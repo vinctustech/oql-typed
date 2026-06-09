@@ -30,6 +30,7 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 |-----------|-----|
 | `inList(field, values)` | `field IN :p` |
 | `notInList(field, values)` | `field NOT IN :p` |
+| `arrayContains(arrayField, value)` | `:p = ANY(arrayField)` |
 | `like(field, pattern)` | `field LIKE :p` |
 | `ilike(field, pattern)` | `field ILIKE :p` |
 | `between(field, low, high)` | `field BETWEEN :p AND :q` |
@@ -37,6 +38,8 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 | `isNotNull(field)` | `field IS NOT NULL` |
 
 `like` / `ilike` also accept `FieldRef<string \| null>`.
+
+`arrayContains(arrayField, value)` tests scalar membership in an array-typed column (`textArray()` / `integerArray()`) — the inverse of `inList` (which tests a scalar column against a JS array). `value` is constrained to the column's element type.
 
 ## Existence
 
