@@ -13,7 +13,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { typedOQL } from './db.js'
-import { query } from './query.js'
+import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
@@ -516,6 +516,23 @@ describe('type: filter operators', () => {
   async function _arrayContains() {
     await query(db, 'zone').where(arrayContains(db.zone.tags, 'vip')).many() // text[] <- string
     await query(db, 'zone').where(arrayContains(db.zone.sectors, 3)).many() // integer[] <- number
+  }
+
+  // --- projection(): a reusable field list spreads into select with full inference ---
+  async function _projection() {
+    const fields = projection(db.trip, 'id', 'state', { customer: ['firstName'] })
+
+    const viaProjection = await query(db, 'trip').select(...fields).many()
+    const inline = await query(db, 'trip').select('id', 'state', { customer: ['firstName'] }).many()
+    // a spread projection() infers exactly like the equivalent inline select
+    type _Eq = AssertTrue<AssertEqual<typeof viaProjection, typeof inline>>
+
+    // the spread also composes with extra inline args appended after it
+    const extended = await query(db, 'trip').select(...fields, 'seats').many()
+    const inlineExtended = await query(db, 'trip')
+      .select('id', 'state', { customer: ['firstName'] }, 'seats')
+      .many()
+    type _EqExt = AssertTrue<AssertEqual<typeof extended, typeof inlineExtended>>
   }
 })
 

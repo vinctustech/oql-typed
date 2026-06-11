@@ -94,6 +94,26 @@ const categories = await query(db, 'category').many()
 // → { id: string, name: string, slug: string }[]
 ```
 
+### Reusable projections
+
+To share one projection across several queries, define it with `projection(handle, ...fields)`. It type-checks the fields against the entity and returns them so you can spread the result into `.select()` — with full result-type inference, and **without `as const`**:
+
+```typescript
+import { projection } from '@vinctus/oql-typed'
+
+const postFields = projection(db.post, 'id', 'title', { author: ['id', 'email'] })
+
+const list = await query(db, 'post').select(...postFields).many()
+const one = await query(db, 'post').select(...postFields).findOneById(postId)
+
+// extend it inline — extra args after the spread are type-checked too
+const withComments = await query(db, 'post')
+  .select(...postFields, { comments: ['id', 'body'] })
+  .many()
+```
+
+Why a helper and not a plain array? A bare `const fields = ['id', 'title']` widens to `string[]`, which loses the exact field names result-type inference needs. `projection()`'s `const` type parameter keeps them as a precise tuple — the same job `as const` would do, but type-checked against the entity and without the assertion.
+
 ## Filtering
 
 `.where(filter)` accepts either a `FilterExpr` or a bare boolean field ref (shorthand for `eq(field, true)`).

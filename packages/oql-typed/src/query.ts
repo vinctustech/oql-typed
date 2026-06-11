@@ -320,6 +320,28 @@ export function query(a: any, b?: any): any {
   throw new Error('query(entityHandle) form requires db parameter; use query(db, "name") instead')
 }
 
+// projection(db.user, 'id', 'firstName', { account: ['id'] })
+//
+// Define a reusable projection without `as const`. The `const Args` type
+// parameter captures the exact field-name literals (and nested-object shapes)
+// that result-type inference depends on, so the returned tuple can be spread
+// into one or more `.select(...)` calls and still drive inference — e.g. to
+// share one projection across several queries, or extend it with extra fields:
+//
+//   const tripFields = projection(db.trip, 'id', 'state', { customer: ['firstName'] })
+//   db.trip.select(...tripFields)
+//   db.trip.select(...tripFields, { stateEvents: ['id'] })
+//
+// The entity handle only binds the schema/entity for type-checking the args; at
+// runtime this returns the args tuple unchanged.
+export function projection<
+  S extends Schema,
+  Name extends keyof S,
+  const Args extends readonly ProjectionArg<S, Name>[],
+>(_entity: EntityHandle<S, Name>, ...args: Args): Args {
+  return args
+}
+
 // Register the starter factory with db.ts so entity handles (db.user, db.zone, ...)
 // can include starter methods (select/where/orderBy/one/many/count/toOQL) directly.
 // This runs at module load and breaks the circular value-import between db and query.

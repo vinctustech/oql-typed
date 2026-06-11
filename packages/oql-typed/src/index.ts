@@ -57,7 +57,7 @@ export type { DB, EntityHandle, OQLInstance } from './db.js'
 // ══════════════════════════════════════════════════════════════════════
 // Query
 // ══════════════════════════════════════════════════════════════════════
-export { query } from './query.js'
+export { query, projection } from './query.js'
 export type { QueryStarter } from './query.js'
 
 // ══════════════════════════════════════════════════════════════════════

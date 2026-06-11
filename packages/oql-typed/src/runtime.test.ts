@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { OQL_PETRADB } from '@vinctus/oql-petradb'
 
 import { typedOQL } from './db.js'
-import { query } from './query.js'
+import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { insert, update } from './mutations.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
@@ -1272,5 +1272,40 @@ describe('runtime: mutations', () => {
     const r = await query(db, 'user').select('id', 'firstName').where(eq(db.user.id, ID.u1)).one()
     assert.ok(r)
     assert.equal(r.firstName, 'Alicia')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// projection() — reusable, type-preserving field list (no `as const`)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: projection', () => {
+  it('spreads into select identically to inline fields', () => {
+    const fields = projection(db.trip, 'id', 'state', { customer: ['firstName'] })
+    const viaProjection = query(db, 'trip').select(...fields).orderBy(asc(db.trip.id)).toOQL()
+    const inline = query(db, 'trip')
+      .select('id', 'state', { customer: ['firstName'] })
+      .orderBy(asc(db.trip.id))
+      .toOQL()
+    assert.deepStrictEqual(viaProjection, inline)
+  })
+
+  it('runs and returns the projected rows', async () => {
+    const fields = projection(db.trip, 'id', 'state')
+    const rows = await query(db, 'trip').select(...fields).orderBy(asc(db.trip.id)).many()
+    assert.deepStrictEqual(
+      rows.map((r) => r.id),
+      [ID.t1, ID.t2, ID.t3, ID.t4],
+    )
+    assert.ok(rows.every((r) => typeof r.state === 'string'))
+  })
+
+  it('composes with extra fields appended after the spread', async () => {
+    const fields = projection(db.trip, 'id')
+    const spread = query(db, 'trip').select(...fields, 'seats').orderBy(asc(db.trip.id)).toOQL()
+    const inline = query(db, 'trip').select('id', 'seats').orderBy(asc(db.trip.id)).toOQL()
+    assert.deepStrictEqual(spread, inline)
+    const rows = await query(db, 'trip').select(...fields, 'seats').orderBy(asc(db.trip.id)).many()
+    assert.ok(rows.every((r) => typeof r.seats === 'number'))
   })
 })

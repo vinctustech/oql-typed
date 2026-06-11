@@ -128,6 +128,21 @@ Scalars as string args, relations as objects:
 .select('id', { account: 'name' })                                         // single-field shorthand
 ```
 
+### Reusable projections
+
+Share one projection across queries with `projection(handle, ...fields)` — spread the result into `.select()` with full inference and no `as const`:
+
+```typescript
+import { projection } from '@vinctus/oql-typed'
+
+const userFields = projection(db.user, 'id', 'firstName', { account: ['id', 'name'] })
+
+await query(db, 'user').select(...userFields).many()
+await query(db, 'user').select(...userFields, 'email').many()   // extend inline
+```
+
+A bare `const fields = ['id', 'firstName']` widens to `string[]` and loses the exact names inference needs; `projection()`'s `const` type parameter keeps them — type-checked against the entity, no assertion.
+
 ### Filtered sub-collections
 
 Add `where`, `orderBy`, `limit`, and `offset` to a nested relation. `limit`/`offset` paginate a to-many relation just like the top-level builder (emitted as `|limit, offset|` after `orderBy`); the result type stays `T[]`:

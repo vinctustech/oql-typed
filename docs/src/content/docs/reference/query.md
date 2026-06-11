@@ -93,6 +93,21 @@ const stub = await db.user.select('id', 'firstName').findOneById(userId)
 
 The terminal shortcuts (`.findOneBy()`, `.findOneById()`) are not available on `CondQueryBuilder` (use `findBy` + `.one()` if you need to combine with `.cond()`).
 
+## `projection(handle, ...fields)`
+
+Defines a reusable projection. Takes an entity handle (`db.user`) to bind the schema/entity, type-checks `fields` against it, and returns them as a precise tuple to spread into one or more `.select()` calls — with full result-type inference and **no `as const`**.
+
+```typescript
+import { projection } from '@vinctus/oql-typed'
+
+const userFields = projection(db.user, 'id', 'firstName', { account: ['id'] })
+
+query(db, 'user').select(...userFields)
+query(db, 'user').select(...userFields, 'email') // extra args after the spread are checked too
+```
+
+At runtime it just returns `fields`; its only job is the `const` type parameter, which preserves the exact field-name literals that inference needs (a bare array would widen to `string[]` and lose them).
+
 ## `queryBuilder(db, entityName)`
 
 Same as `query()`, plus conditional filtering:
