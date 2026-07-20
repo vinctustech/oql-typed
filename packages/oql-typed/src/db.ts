@@ -2,6 +2,8 @@ import type { Schema, FieldRefsFor } from './types.js'
 import type { Unwrap, EntityMeta } from './schema.js'
 import { Column, Relation } from './schema.js'
 import type { QueryStarter } from './query.js'
+import type { MutationMethods } from './mutations.js'
+import { createMutationMethods } from './mutations.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // OQL runtime interface — minimal shape we need from the backend
@@ -18,6 +20,8 @@ export interface OQLInstance {
   entity(name: string): {
     insert<T = any>(data: Record<string, unknown>): Promise<T>
     update<T = any>(id: unknown, data: Record<string, unknown>): Promise<T>
+    delete(id: unknown): Promise<void>
+    bulkDelete(ids: unknown[]): Promise<void>
   }
 }
 
@@ -29,15 +33,17 @@ export type Engine = 'ast' | 'string'
 // DB type — db.user, db.account, etc.
 // ══════════════════════════════════════════════════════════════════════
 
-// EntityHandle is BOTH a field-ref accessor AND a query starter.
-// `db.user.id`     → FieldRef<string>                (field-ref accessor)
-// `db.user.select(...)` → QueryBuilder<...>          (query starter)
+// EntityHandle is a field-ref accessor, a query starter, AND a mutation surface.
+// `db.user.id`          → FieldRef<string>            (field-ref accessor)
+// `db.user.select(...)` → QueryBuilder<...>           (query starter)
+// `db.user.insert(...)` → Promise<row>                (mutation method)
 // Column/relation names can't conflict with starter method names (select, where,
-// orderBy, limit, offset, one, many, count, toOQL, query, queryBuilder).
+// orderBy, limit, offset, one, many, count, toOQL, query, queryBuilder) or with
+// mutation method names (insert, update, delete, bulkDelete).
 export type EntityHandle<S extends Schema, Name extends keyof S> = {
   readonly __entityName: Name
   readonly __schema: S
-} & FieldRefsFor<S, Name> & QueryStarter<S, Name>
+} & FieldRefsFor<S, Name> & QueryStarter<S, Name> & MutationMethods<S, Name>
 
 export type DB<S extends Schema> = {
   readonly __oql: OQLInstance
@@ -144,6 +150,11 @@ function createEntityHandle(oql: OQLInstance, schema: Schema, entityName: string
   const starter = starterFactory(oql, schema, entityName, engine)
   for (const key of Object.keys(starter)) {
     if (!(key in handle)) handle[key] = starter[key]
+  }
+  // Mix in mutation methods so `db.user.insert(...)`, `db.user.delete(...)` work.
+  const mutations = createMutationMethods(oql, entityName)
+  for (const key of Object.keys(mutations)) {
+    if (!(key in handle)) handle[key] = mutations[key]
   }
   return handle
 }

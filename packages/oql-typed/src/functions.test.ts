@@ -33,6 +33,8 @@ const oql: import('./db.js').OQLInstance = {
   entity: () => ({
     insert: () => Promise.resolve({}) as any,
     update: () => Promise.resolve({}) as any,
+    delete: () => Promise.resolve(),
+    bulkDelete: () => Promise.resolve(),
   }),
 }
 const db = typedOQL(oql, schema)

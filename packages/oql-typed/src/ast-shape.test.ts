@@ -19,7 +19,12 @@ const stub: OQLInstance = {
   queryOneAST: () => Promise.resolve(undefined),
   queryManyAST: () => Promise.resolve([]),
   countAST: () => Promise.resolve(0),
-  entity: () => ({ insert: () => Promise.resolve({}) as any, update: () => Promise.resolve({}) as any }),
+  entity: () => ({
+    insert: () => Promise.resolve({}) as any,
+    update: () => Promise.resolve({}) as any,
+    delete: () => Promise.resolve(),
+    bulkDelete: () => Promise.resolve(),
+  }),
 }
 const db = typedOQL(stub, schema)
 

@@ -15,7 +15,6 @@ import assert from 'node:assert/strict'
 import { typedOQL } from './db.js'
 import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
-import { insert, update } from './mutations.js'
 import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
 import { alias, aliasedRelation, currentTimestamp, fn, ref, outer, subquery, caseWhen } from './expressions.js'
 import type { FieldRef, Prettify } from './types.js'
@@ -36,6 +35,8 @@ const oql: import('./db.js').OQLInstance = {
   entity: () => ({
     insert: () => Promise.resolve({}) as any,
     update: () => Promise.resolve({}) as any,
+    delete: () => Promise.resolve(),
+    bulkDelete: () => Promise.resolve(),
   }),
 }
 const db = typedOQL(oql, schema)
@@ -830,7 +831,7 @@ describe('type: mutations', () => {
   it('placeholder', () => assert.ok(true))
 
   async function _insertBasic() {
-    const r = await insert(db, 'account', {
+    const r = await db.account.insert({
       id: 'x',
       name: 'Foo',
       enabled: true,
@@ -847,7 +848,7 @@ describe('type: mutations', () => {
 
   async function _insertWithFK() {
     // manyToOne FK accepted as string (the target PK)
-    await insert(db, 'user', {
+    await db.user.insert({
       id: 'x',
       firstName: 'A',
       lastName: 'B',
@@ -859,7 +860,7 @@ describe('type: mutations', () => {
   }
 
   async function _update() {
-    const r = await update(db, 'user', 'some-id', { firstName: 'Alicia' })
+    const r = await db.user.update('some-id', { firstName: 'Alicia' })
     // update returns partial, so all fields optional
     type _ = AssertTrue<AssertEqual<typeof r, Prettify<Partial<{
       id: string
@@ -870,6 +871,21 @@ describe('type: mutations', () => {
       enabled: boolean
       lastLoginAt: Date | null
     }>>>>
+  }
+
+  async function _delete() {
+    const r = await db.user.delete('some-id')
+    type _ = AssertTrue<AssertEqual<typeof r, void>>
+  }
+
+  async function _deleteAcceptsNumericPk() {
+    // primary keys may be strings or numbers
+    await db.account.delete(123)
+  }
+
+  async function _bulkDelete() {
+    const r = await db.user.bulkDelete(['a', 'b', 'c'])
+    type _ = AssertTrue<AssertEqual<typeof r, void>>
   }
 })
 
@@ -882,22 +898,32 @@ describe('type: mutation negatives', () => {
 
   async function _insertMissingRequired() {
     // @ts-expect-error — missing required fields (name, enabled, plan, createdAt)
-    await insert(db, 'account', { id: 'x' })
+    await db.account.insert({ id: 'x' })
   }
 
   async function _insertWrongFieldType() {
     // @ts-expect-error — enabled should be boolean, not 'yes'
-    await insert(db, 'account', { id: 'x', name: 'f', enabled: 'yes', plan: 'pro', createdAt: new Date() })
+    await db.account.insert({ id: 'x', name: 'f', enabled: 'yes', plan: 'pro', createdAt: new Date() })
   }
 
   async function _updateBadField() {
     // @ts-expect-error — 'bogus' isn't a field
-    await update(db, 'user', 'x', { bogus: 1 })
+    await db.user.update('x', { bogus: 1 })
   }
 
   async function _updateWrongType() {
     // @ts-expect-error — firstName should be string
-    await update(db, 'user', 'x', { firstName: 123 })
+    await db.user.update('x', { firstName: 123 })
+  }
+
+  async function _deleteWrongIdType() {
+    // @ts-expect-error — id must be a string or number, not an object
+    await db.user.delete({ id: 'x' })
+  }
+
+  async function _bulkDeleteWrongIdType() {
+    // @ts-expect-error — bulkDelete takes an array of primary keys, not a single id
+    await db.user.bulkDelete('x')
   }
 })
 

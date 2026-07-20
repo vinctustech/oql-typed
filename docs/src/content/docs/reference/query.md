@@ -128,10 +128,20 @@ queryBuilder(db, 'user')
 
 ## Mutations
 
-### `insert(db, entityName, input)`
+Mutations are methods on every entity handle (`db.<entity>.…`).
+
+### `db.<entity>.insert(input)`
 
 Returns the full row. Required fields (non-nullable, no default) are enforced at the type level; the primary key is optional (OQL auto-generates if omitted).
 
-### `update(db, entityName, id, patch)`
+### `db.<entity>.update(id, patch)`
 
 Returns the primary key plus the patched fields. All patch fields are optional.
+
+### `db.<entity>.delete(id)`
+
+Removes a single row by primary key. Returns `Promise<void>`.
+
+### `db.<entity>.bulkDelete(ids)`
+
+Removes many rows by primary key. Returns `Promise<void>`.

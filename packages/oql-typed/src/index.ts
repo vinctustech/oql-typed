@@ -99,10 +99,11 @@ export type { OQLExpr, AliasedRelationSpec, CaseBranch } from './expressions.js'
 export { lower, upper, trim, length, concat, concatOp, coalesce, count, sum, avg, min, max } from './functions.js'
 
 // ══════════════════════════════════════════════════════════════════════
-// Mutations
+// Mutations — insert/update/delete/bulkDelete are methods on every entity
+// handle (db.user.insert(...), db.trip.delete(...)). These types describe
+// their inputs and shape.
 // ══════════════════════════════════════════════════════════════════════
-export { insert, update } from './mutations.js'
-export type { InsertInput, UpdateInput } from './mutations.js'
+export type { InsertInput, UpdateInput, MutationMethods } from './mutations.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Conditional QueryBuilder

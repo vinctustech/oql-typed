@@ -12,7 +12,6 @@ import { OQL_PETRADB } from '@vinctus/oql-petradb'
 import { typedOQL } from './db.js'
 import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
-import { insert, update } from './mutations.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
 import { fn, ref, outer, alias, aliasedRelation, currentTimestamp, subquery, caseWhen } from './expressions.js'
 import { count, sum, avg, min, max, concatOp } from './functions.js'
@@ -575,14 +574,14 @@ describe('runtime: currentTimestamp() comparisons (SC-1501)', () => {
     // between them. This is deterministic for any real clock in (2000, 2999)
     // and proves CURRENT_TIMESTAMP is genuinely the current time (not a fixed
     // constant) AND that both comparison directions resolve correctly.
-    await insert(db, 'account', {
+    await db.account.insert({
       id: 'a0000000-0000-4000-8000-00000000ec01',
       name: 'sc1501-past',
       enabled: true,
       plan: 'free',
       createdAt: new Date('2000-01-01T00:00:00Z'),
     })
-    await insert(db, 'account', {
+    await db.account.insert({
       id: 'a0000000-0000-4000-8000-00000000ec02',
       name: 'sc1501-future',
       enabled: true,
@@ -1251,7 +1250,7 @@ describe('runtime: queryBuilder cond()', () => {
 
 describe('runtime: mutations', () => {
   it('insert returns full row', async () => {
-    const r = await insert(db, 'account', {
+    const r = await db.account.insert({
       id: 'a0000000-0000-4000-8000-0000000000ff',
       name: 'Beta',
       enabled: true,
@@ -1262,8 +1261,14 @@ describe('runtime: mutations', () => {
     assert.equal(r.enabled, true)
   })
 
+  it('insert persists', async () => {
+    const r = await query(db, 'account').select('id', 'name').where(eq(db.account.name, 'Beta')).one()
+    assert.ok(r)
+    assert.equal(r.id, 'a0000000-0000-4000-8000-0000000000ff')
+  })
+
   it('update returns updated fields + pk', async () => {
-    const r = await update(db, 'user', ID.u1, { firstName: 'Alicia' })
+    const r = await db.user.update(ID.u1, { firstName: 'Alicia' })
     assert.equal(r.id, ID.u1)
     assert.equal(r.firstName, 'Alicia')
   })
@@ -1272,6 +1277,48 @@ describe('runtime: mutations', () => {
     const r = await query(db, 'user').select('id', 'firstName').where(eq(db.user.id, ID.u1)).one()
     assert.ok(r)
     assert.equal(r.firstName, 'Alicia')
+  })
+
+  it('delete removes one row by primary key', async () => {
+    const id = 'a0000000-0000-4000-8000-0000000000d1'
+    await db.account.insert({ id, name: 'DeleteMe', enabled: true, plan: 'free', createdAt: new Date('2024-07-01T00:00:00Z') })
+    const before = await query(db, 'account').select('id').where(eq(db.account.id, id)).one()
+    assert.ok(before, 'row should exist before delete')
+
+    await db.account.delete(id)
+
+    const after = await query(db, 'account').select('id').where(eq(db.account.id, id)).one()
+    assert.equal(after, undefined, 'row should be gone after delete')
+  })
+
+  it('delete leaves sibling rows untouched', async () => {
+    const keepId = 'a0000000-0000-4000-8000-0000000000d2'
+    const dropId = 'a0000000-0000-4000-8000-0000000000d3'
+    await db.account.insert({ id: keepId, name: 'Keep', enabled: true, plan: 'free', createdAt: new Date('2024-07-01T00:00:00Z') })
+    await db.account.insert({ id: dropId, name: 'Drop', enabled: true, plan: 'free', createdAt: new Date('2024-07-01T00:00:00Z') })
+
+    await db.account.delete(dropId)
+
+    const keep = await query(db, 'account').select('id').where(eq(db.account.id, keepId)).one()
+    assert.ok(keep, 'sibling row must survive a targeted delete')
+  })
+
+  it('bulkDelete removes many rows by primary key', async () => {
+    const ids = [
+      'a0000000-0000-4000-8000-0000000000b1',
+      'a0000000-0000-4000-8000-0000000000b2',
+      'a0000000-0000-4000-8000-0000000000b3',
+    ]
+    for (const id of ids) {
+      await db.account.insert({ id, name: `Bulk-${id.slice(-2)}`, enabled: true, plan: 'free', createdAt: new Date('2024-07-01T00:00:00Z') })
+    }
+    const before = await query(db, 'account').select('id').where(inList(db.account.id, ids)).many()
+    assert.equal(before.length, 3, 'all three rows should exist before bulkDelete')
+
+    await db.account.bulkDelete(ids)
+
+    const after = await query(db, 'account').select('id').where(inList(db.account.id, ids)).many()
+    assert.equal(after.length, 0, 'all three rows should be gone after bulkDelete')
   })
 })
 

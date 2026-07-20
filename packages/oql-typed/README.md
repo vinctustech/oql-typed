@@ -225,11 +225,11 @@ db.trip.select('id', alias('priority', caseWhen(
 
 ## Mutations
 
-```typescript
-import { insert, update } from '@vinctus/oql-typed'
+Mutations are methods on every entity handle — `db.<entity>.insert/update/delete/bulkDelete`:
 
-// insert(db, entityName, input) — typed input (required/optional fields), returns full row
-const newUser = await insert(db, 'user', {
+```typescript
+// db.<entity>.insert(input) — typed input (required/optional fields), returns full row
+const newUser = await db.user.insert({
   id:        crypto.randomUUID(),
   firstName: 'Alice',
   lastName:  'Smith',
@@ -241,11 +241,17 @@ const newUser = await insert(db, 'user', {
 })
 // => { id: string, firstName: string, ..., lastLoginAt: Date | null }
 
-// update(db, entityName, id, patch) — all patch fields optional
-const updated = await update(db, 'user', userId, {
+// db.<entity>.update(id, patch) — all patch fields optional
+const updated = await db.user.update(userId, {
   firstName: 'Alicia',
 })
 // => { id: string, firstName: string }
+
+// db.<entity>.delete(id) — remove one row by primary key
+await db.user.delete(userId)
+
+// db.<entity>.bulkDelete(ids) — remove many rows by primary key
+await db.user.bulkDelete([userId, otherUserId])
 ```
 
 ## Conditional QueryBuilder

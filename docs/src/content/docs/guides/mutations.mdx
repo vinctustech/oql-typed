@@ -1,13 +1,13 @@
 ---
 title: Mutations
-description: insert() and update() with typed inputs and typed returns.
+description: insert / update / delete / bulkDelete as typed methods on every entity handle.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
-Mutations have the same type-safety guarantees as queries — the input shape is enforced, nullable fields are honored, and the returned row is fully typed.
+Mutations are methods on every entity handle — `db.user.insert(...)`, `db.trip.delete(...)`. They carry the same type-safety guarantees as queries: the input shape is enforced, nullable fields are honored, and the returned row is fully typed.
 
-## `insert(db, entityName, input)`
+## `db.<entity>.insert(input)`
 
 The input is typed:
 
@@ -19,9 +19,7 @@ The input is typed:
 <Tabs syncKey="insert">
   <TabItem label="TypeScript">
     ```typescript
-    import { insert } from '@vinctus/oql-typed'
-
-    const alice = await insert(db, 'user', {
+    const alice = await db.user.insert({
       id:        crypto.randomUUID(),
       email:     'alice@example.com',
       firstName: 'Alice',
@@ -45,7 +43,7 @@ The input is typed:
   </TabItem>
   <TabItem label="With a manyToOne FK">
     ```typescript
-    const draft = await insert(db, 'post', {
+    const draft = await db.post.insert({
       id:        crypto.randomUUID(),
       title:     'Hello',
       slug:      'hello',
@@ -65,14 +63,14 @@ The input is typed:
   </TabItem>
   <TabItem label="What the compiler rejects">
     ```typescript
-    insert(db, 'user', {
+    db.user.insert({
       id:    crypto.randomUUID(),
       email: 'bob@example.com',
       // ✗ missing required: firstName, lastName, role, enabled
     })
     // → Type error: missing required fields
 
-    insert(db, 'user', {
+    db.user.insert({
       id:        crypto.randomUUID(),
       email:     'bob@example.com',
       firstName: 'Bob',
@@ -85,16 +83,14 @@ The input is typed:
   </TabItem>
 </Tabs>
 
-## `update(db, entityName, id, patch)`
+## `db.<entity>.update(id, patch)`
 
 Every field in the patch is optional. Returns the primary key plus the fields you patched, all typed.
 
 <Tabs syncKey="update">
   <TabItem label="TypeScript">
     ```typescript
-    import { update } from '@vinctus/oql-typed'
-
-    const changed = await update(db, 'user', alice.id, {
+    const changed = await db.user.update(alice.id, {
       firstName: 'Alicia',
       role:      'ADMIN',
     })
@@ -107,13 +103,31 @@ Every field in the patch is optional. Returns the primary key plus the fields yo
   </TabItem>
   <TabItem label="Clearing a nullable field">
     ```typescript
-    await update(db, 'post', postId, {
+    await db.post.update(postId, {
       publishedAt: null,    // explicitly clear to NULL
     })
     ```
   </TabItem>
 </Tabs>
 
+## `db.<entity>.delete(id)`
+
+Removes a single row by primary key. Returns `Promise<void>` — there is no row echo.
+
+```typescript
+await db.user.delete(alice.id)
+```
+
+The id is typed as `string | number` (matching how primary keys are declared), so a mistyped id is a compile error.
+
+## `db.<entity>.bulkDelete(ids)`
+
+Removes many rows by primary key in one call. Returns `Promise<void>`.
+
+```typescript
+await db.tripStep.bulkDelete(removedStepIds)   // ids: (string | number)[]
+```
+
 <Aside type="tip">
-Want to bulk-update or upsert? Mutations return typed single rows. Compose them with your own transaction helper on the backend side (e.g. PostgreSQL `pg` transactions) — `insert()` and `update()` don't implicitly span a transaction.
+Want to bulk-insert, bulk-update, or upsert? Mutations return typed single rows (or `void` for deletes). Compose them with your own transaction helper on the backend side (e.g. PostgreSQL `pg` transactions) — the mutation methods don't implicitly span a transaction.
 </Aside>

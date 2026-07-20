@@ -57,12 +57,12 @@ const existing = await query(db, 'user')
 
 if (existing) {
   if (!existing.enabled) {
-    await update(db, 'user', existing.id, { enabled: true })
+    await db.user.update(existing.id, { enabled: true })
   }
   return existing.id
 }
 
-return (await insert(db, 'user', input)).id
+return (await db.user.insert(input)).id
 ```
 
 ```oql

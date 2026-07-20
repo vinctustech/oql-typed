@@ -1,6 +1,6 @@
 import type { Schema, InferAllScalars } from './types.js'
 import type { Column, Relation, Unwrap } from './schema.js'
-import type { DB, OQLInstance } from './db.js'
+import type { OQLInstance } from './db.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Input types — required non-PK scalars + manyToOne FKs
@@ -66,25 +66,28 @@ export type UpdateInput<S extends Schema, Name extends keyof S> = {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// insert() — returns the inserted row with all scalars
-// update() — returns the updated fields (partial)
+// Mutation methods, mixed onto every entity handle (db.user, db.trip, …):
+//   db.user.insert(data)      — returns the inserted row with all scalars
+//   db.user.update(id, patch) — returns the primary key + patched fields
+//   db.user.delete(id)        — removes one row by primary key
+//   db.user.bulkDelete(ids)   — removes many rows by primary key
 // ══════════════════════════════════════════════════════════════════════
 
-export function insert<S extends Schema, Name extends keyof S & string>(
-  db: DB<S>,
-  entityName: Name,
-  data: InsertInput<S, Name>,
-): Promise<InferAllScalars<Unwrap<S[Name]>>> {
-  const oql = db.__oql as OQLInstance
-  return oql.entity(entityName).insert<InferAllScalars<Unwrap<S[Name]>>>(data as Record<string, unknown>)
+export interface MutationMethods<S extends Schema, Name extends keyof S> {
+  insert(data: InsertInput<S, Name>): Promise<InferAllScalars<Unwrap<S[Name]>>>
+  update(id: string | number, data: UpdateInput<S, Name>): Promise<Partial<InferAllScalars<Unwrap<S[Name]>>>>
+  delete(id: string | number): Promise<void>
+  bulkDelete(ids: (string | number)[]): Promise<void>
 }
 
-export function update<S extends Schema, Name extends keyof S & string>(
-  db: DB<S>,
-  entityName: Name,
-  id: string | number,
-  data: UpdateInput<S, Name>,
-): Promise<Partial<InferAllScalars<Unwrap<S[Name]>>>> {
-  const oql = db.__oql as OQLInstance
-  return oql.entity(entityName).update(id, data as Record<string, unknown>)
+// Runtime factory — untyped bodies; the types come from MutationMethods on the
+// entity handle. Each call resolves the backend entity fresh, mirroring how the
+// mutations were dispatched before they moved onto the handle.
+export function createMutationMethods(oql: OQLInstance, entityName: string): Record<string, unknown> {
+  return {
+    insert: (data: Record<string, unknown>) => oql.entity(entityName).insert(data),
+    update: (id: unknown, data: Record<string, unknown>) => oql.entity(entityName).update(id, data),
+    delete: (id: unknown) => oql.entity(entityName).delete(id),
+    bulkDelete: (ids: unknown[]) => oql.entity(entityName).bulkDelete(ids),
+  }
 }
