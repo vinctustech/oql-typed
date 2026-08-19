@@ -1363,76 +1363,87 @@ describe('runtime: projection', () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe('runtime: transactions', () => {
-  // petradb has no transaction support, so `db` here is the real backend used
-  // by every other suite in this file.
-  it('rejects a backend that does not support transactions', () => {
-    assert.throws(() => db.transaction(async () => undefined), /does not support transactions/)
+  const account = (suffix: string, name: string) => ({
+    id: `a0000000-0000-4000-8000-0000000000${suffix}`,
+    name,
+    enabled: true,
+    plan: 'free',
+    createdAt: new Date('2024-07-01T00:00:00Z'),
   })
 
-  // A stub backend records what reached the transaction's connection.
-  function stubOQL(): { oql: OQLInstance; events: string[] } {
-    const events: string[] = []
-    const inTransaction: OQLInstance = {
-      queryOne: async () => undefined,
-      queryMany: async () => {
-        events.push('queryMany')
-        return []
-      },
-      count: async () => 0,
-      queryOneAST: async () => undefined,
-      queryManyAST: async () => {
-        events.push('queryMany')
-        return []
-      },
-      countAST: async () => 0,
-      entity: (name) => ({
-        insert: async (data) => data as any,
-        update: async (_id, data) => data as any,
-        delete: async () => {
-          events.push(`delete:${name}`)
-        },
-        bulkDelete: async () => {},
-      }),
-    }
-    const oql: OQLInstance = {
-      ...inTransaction,
-      entity: () => assert.fail('mutation ran outside the transaction'),
-      transaction: async (body) => {
-        events.push('BEGIN')
-        try {
-          const result = await body(inTransaction)
-          events.push('COMMIT')
-          return result
-        } catch (error) {
-          events.push('ROLLBACK')
-          throw error
-        }
-      },
-    }
-    return { oql, events }
-  }
+  const named = (target: typeof db, name: string) =>
+    query(target, 'account').select('id').where(eq(target.account.name, name)).many()
 
-  it('routes typed queries and mutations to the transaction connection', async () => {
-    const { oql, events } = stubOQL()
-    const txDb = typedOQL(oql, schema, { engine })
-    const result = await txDb.transaction(async (tx) => {
-      await query(tx, 'trip').select('id').many()
-      await tx.trip.delete(ID.t1)
-      return 'committed'
+  it('keeps every write when the body resolves', async () => {
+    await db.transaction(async (tx) => {
+      await tx.account.insert(account('e1', 'TxCommit'))
+      await tx.account.insert(account('e2', 'TxCommit'))
     })
-    assert.strictEqual(result, 'committed')
-    assert.deepStrictEqual(events, ['BEGIN', 'queryMany', 'delete:trip', 'COMMIT'])
+    assert.equal((await named(db, 'TxCommit')).length, 2)
   })
 
-  it('propagates a failure so the backend rolls back', async () => {
-    const { oql, events } = stubOQL()
-    const txDb = typedOQL(oql, schema, { engine })
+  it('returns the body result', async () => {
+    const inserted = await db.transaction(async (tx) => tx.account.insert(account('e3', 'TxResult')))
+    assert.equal(inserted.name, 'TxResult')
+  })
+
+  it('undoes every write when the body rejects', async () => {
     await assert.rejects(
-      txDb.transaction(async () => {
+      db.transaction(async (tx) => {
+        await tx.account.insert(account('e4', 'TxRollback'))
+        await tx.account.insert(account('e5', 'TxRollback'))
+
         throw new Error('deliberate failure')
       }),
       /deliberate failure/,
     )
-    assert.deepStrictEqual(events, ['BEGIN', 'ROLLBACK'])
+    assert.equal((await named(db, 'TxRollback')).length, 0)
+  })
+
+  it('undoes an update and a delete too', async () => {
+    await db.account.insert(account('e6', 'TxUpdated'))
+    await db.account.insert(account('e7', 'TxDeleted'))
+
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        await tx.account.update(account('e6', '').id, { name: 'TxRenamed' })
+        await tx.account.delete(account('e7', '').id)
+
+        throw new Error('deliberate failure')
+      }),
+      /deliberate failure/,
+    )
+
+    assert.equal((await named(db, 'TxRenamed')).length, 0)
+    assert.equal((await named(db, 'TxUpdated')).length, 1)
+    assert.equal((await named(db, 'TxDeleted')).length, 1)
+  })
+
+  it('reads its own uncommitted writes', async () => {
+    await db.transaction(async (tx) => {
+      await tx.account.insert(account('e8', 'TxOwnRead'))
+      assert.equal((await named(tx, 'TxOwnRead')).length, 1)
+    })
+  })
+
+  it('leaves the connection usable after a rollback', async () => {
+    await db.transaction(async (tx) => {
+      await tx.account.insert(account('e9', 'TxAfterRollback'))
+    })
+    assert.equal((await named(db, 'TxAfterRollback')).length, 1)
+  })
+
+  it('reports a backend that cannot do transactions', () => {
+    const withoutTransactions: OQLInstance = {
+      queryOne: async () => undefined,
+      queryMany: async () => [],
+      count: async () => 0,
+      queryOneAST: async () => undefined,
+      queryManyAST: async () => [],
+      countAST: async () => 0,
+      entity: () => assert.fail('nothing should reach the backend'),
+    }
+    const plain = typedOQL(withoutTransactions, schema, { engine })
+    assert.throws(() => plain.transaction(async () => undefined), /does not support transactions/)
   })
 })

@@ -151,5 +151,5 @@ const created = await db.transaction(async (tx) => tx.post.insert({ title, autho
 Reads inside the transaction see its own uncommitted writes; other connections do not see them until it commits.
 
 <Aside type="caution">
-Only the PostgreSQL backend (`@vinctus/oql-pg`) supports transactions — calling `db.transaction` on the in-memory backend throws. A `db.transaction` call nested inside another joins the transaction already in progress rather than starting a new one, so a failure anywhere rolls back everything.
+Both backends support transactions — `@vinctus/oql-pg` pins one pooled connection for the duration, and `@vinctus/oql-petradb` uses its single session, so tests get the same guarantee. `db.transaction` throws on a backend that implements neither. A call nested inside another joins the transaction already in progress rather than starting a new one, so a failure anywhere rolls back everything.
 </Aside>
