@@ -35,7 +35,7 @@ const one = await db.user.findOneById(userId)
 // => { id, email, enabled } | undefined
 ```
 
-See the [docs](https://vinctustech.github.io/oql-typed/) for the full guide — schema, queries, operators, expressions, mutations, and the conditional QueryBuilder.
+See the [docs](https://vinctustech.github.io/oql-typed/) for the full guide — schema, queries, operators, expressions, mutations, transactions, and the conditional QueryBuilder.
 
 ## Repository layout
 

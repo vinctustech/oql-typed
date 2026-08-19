@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import { OQL_PETRADB } from '@vinctus/oql-petradb'
 
 import { typedOQL } from './db.js'
+import type { OQLInstance } from './db.js'
 import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
@@ -1354,5 +1355,84 @@ describe('runtime: projection', () => {
     assert.deepStrictEqual(spread, inline)
     const rows = await query(db, 'trip').select(...fields, 'seats').orderBy(asc(db.trip.id)).many()
     assert.ok(rows.every((r) => typeof r.seats === 'number'))
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSACTIONS
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: transactions', () => {
+  // petradb has no transaction support, so `db` here is the real backend used
+  // by every other suite in this file.
+  it('rejects a backend that does not support transactions', () => {
+    assert.throws(() => db.transaction(async () => undefined), /does not support transactions/)
+  })
+
+  // A stub backend records what reached the transaction's connection.
+  function stubOQL(): { oql: OQLInstance; events: string[] } {
+    const events: string[] = []
+    const inTransaction: OQLInstance = {
+      queryOne: async () => undefined,
+      queryMany: async () => {
+        events.push('queryMany')
+        return []
+      },
+      count: async () => 0,
+      queryOneAST: async () => undefined,
+      queryManyAST: async () => {
+        events.push('queryMany')
+        return []
+      },
+      countAST: async () => 0,
+      entity: (name) => ({
+        insert: async (data) => data as any,
+        update: async (_id, data) => data as any,
+        delete: async () => {
+          events.push(`delete:${name}`)
+        },
+        bulkDelete: async () => {},
+      }),
+    }
+    const oql: OQLInstance = {
+      ...inTransaction,
+      entity: () => assert.fail('mutation ran outside the transaction'),
+      transaction: async (body) => {
+        events.push('BEGIN')
+        try {
+          const result = await body(inTransaction)
+          events.push('COMMIT')
+          return result
+        } catch (error) {
+          events.push('ROLLBACK')
+          throw error
+        }
+      },
+    }
+    return { oql, events }
+  }
+
+  it('routes typed queries and mutations to the transaction connection', async () => {
+    const { oql, events } = stubOQL()
+    const txDb = typedOQL(oql, schema, { engine })
+    const result = await txDb.transaction(async (tx) => {
+      await query(tx, 'trip').select('id').many()
+      await tx.trip.delete(ID.t1)
+      return 'committed'
+    })
+    assert.strictEqual(result, 'committed')
+    assert.deepStrictEqual(events, ['BEGIN', 'queryMany', 'delete:trip', 'COMMIT'])
+  })
+
+  it('propagates a failure so the backend rolls back', async () => {
+    const { oql, events } = stubOQL()
+    const txDb = typedOQL(oql, schema, { engine })
+    await assert.rejects(
+      txDb.transaction(async () => {
+        throw new Error('deliberate failure')
+      }),
+      /deliberate failure/,
+    )
+    assert.deepStrictEqual(events, ['BEGIN', 'ROLLBACK'])
   })
 })

@@ -128,6 +128,28 @@ Removes many rows by primary key in one call. Returns `Promise<void>`.
 await db.tripStep.bulkDelete(removedStepIds)   // ids: (string | number)[]
 ```
 
-<Aside type="tip">
-Want to bulk-insert, bulk-update, or upsert? Mutations return typed single rows (or `void` for deletes). Compose them with your own transaction helper on the backend side (e.g. PostgreSQL `pg` transactions) — the mutation methods don't implicitly span a transaction.
+## `db.transaction(body)`
+
+A single mutation is atomic on its own, but a group of them is not. `db.transaction` runs `body` so that every write inside it either applies together or not at all: the transaction commits when the promise `body` returns resolves, and rolls back if it rejects.
+
+`body` receives a `DB` bound to the transaction's connection — same entity handles, same queries, same mutations, fully typed. Use `tx`, not the outer `db`, for everything that belongs to the transaction.
+
+```typescript
+await db.transaction(async (tx) => {
+  await tx.availability.update(id, { endDatetime: cutoff })
+  await tx.availability.insert(remainder)
+})
+```
+
+Whatever `body` returns becomes the result of `db.transaction`, so a transaction can hand back the rows it created:
+
+```typescript
+const created = await db.transaction(async (tx) => tx.post.insert({ title, authorId }))
+// => { id: string, title: string, authorId: string }
+```
+
+Reads inside the transaction see its own uncommitted writes; other connections do not see them until it commits.
+
+<Aside type="caution">
+Only the PostgreSQL backend (`@vinctus/oql-pg`) supports transactions — calling `db.transaction` on the in-memory backend throws. A `db.transaction` call nested inside another joins the transaction already in progress rather than starting a new one, so a failure anywhere rolls back everything.
 </Aside>

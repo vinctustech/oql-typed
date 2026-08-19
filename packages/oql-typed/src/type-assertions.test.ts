@@ -1029,3 +1029,38 @@ describe('type: currentTimestamp() comparisons', () => {
     eq(db.account.enabled, currentTimestamp())
   }
 })
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSACTIONS
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: transactions', () => {
+  it('placeholder (real assertions at type level)', () => assert.ok(true))
+
+  async function _returnsBodyResult() {
+    const r = await db.transaction(async () => 42)
+    type _ = AssertTrue<AssertEqual<typeof r, number>>
+  }
+
+  async function _bodyGetsTheSameDB() {
+    await db.transaction(async (tx) => {
+      type _ = AssertTrue<AssertEqual<typeof tx, typeof db>>
+      // entity handles, queries and mutations are all available on `tx`
+      const rows = await query(tx, 'user').select('id', 'firstName').many()
+      type _rows = AssertTrue<AssertEqual<typeof rows, { id: string; firstName: string }[]>>
+      await tx.user.update('some-id', { firstName: 'Alicia' })
+    })
+  }
+
+  async function _rejectsNonPromiseBody() {
+    // @ts-expect-error — the body must return a promise
+    await db.transaction(() => 42)
+  }
+
+  async function _typeErrorsInsideTheBodyStillSurface() {
+    await db.transaction(async (tx) => {
+      // @ts-expect-error — 'nope' is not a field of user
+      await tx.user.update('some-id', { nope: true })
+    })
+  }
+})

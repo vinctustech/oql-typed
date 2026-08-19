@@ -23,6 +23,8 @@ export interface OQLInstance {
     delete(id: unknown): Promise<void>
     bulkDelete(ids: unknown[]): Promise<void>
   }
+  // Optional because only the PostgreSQL backend implements transactions
+  transaction?<T>(body: (tx: OQLInstance) => Promise<T>): Promise<T>
 }
 
 // Which engine the query terminals use. 'ast' (default) builds a plain-object
@@ -45,10 +47,15 @@ export type EntityHandle<S extends Schema, Name extends keyof S> = {
   readonly __schema: S
 } & FieldRefsFor<S, Name> & QueryStarter<S, Name> & MutationMethods<S, Name>
 
+// `transaction` runs a group of writes so that they all apply or none do; the
+// body gets a DB bound to the transaction's connection. An entity named
+// `transaction` takes precedence over the method, the same way entity fields
+// take precedence over query-starter methods.
 export type DB<S extends Schema> = {
   readonly __oql: OQLInstance
   readonly __schema: S
   readonly __engine: Engine
+  transaction<T>(body: (tx: DB<S>) => Promise<T>): Promise<T>
 } & {
   readonly [Name in keyof S]: EntityHandle<S, Name>
 }
@@ -185,6 +192,11 @@ export function typedOQL<S extends Schema>(
     __oql: oql,
     __schema: schema,
     __engine: engine,
+    transaction: <T>(body: (tx: DB<S>) => Promise<T>): Promise<T> => {
+      if (!oql.transaction)
+        throw new Error('oql-typed: this OQL backend does not support transactions')
+      return oql.transaction((tx) => body(typedOQL(tx, schema, opts)))
+    },
   }
   for (const entityName of Object.keys(schema)) {
     db[entityName] = createEntityHandle(oql, schema, entityName, engine)
