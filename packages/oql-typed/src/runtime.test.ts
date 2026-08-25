@@ -1433,6 +1433,28 @@ describe('runtime: transactions', () => {
     assert.equal((await named(db, 'TxAfterRollback')).length, 1)
   })
 
+  it('runs raw SQL on the transaction connection', async () => {
+    await db.transaction(async (tx) => {
+      await tx.account.insert(account('ea', 'TxRawRead'))
+      const rows = await tx.raw<{ name: string }>('SELECT name FROM accounts WHERE name = $1', [
+        'TxRawRead',
+      ])
+      assert.equal(rows.length, 1)
+    })
+  })
+
+  it('rolls raw SQL back with the rest of the transaction', async () => {
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        await tx.raw("INSERT INTO accounts (id, name, enabled, plan, created_at) VALUES ('a0000000-0000-4000-8000-0000000000eb', 'TxRawRollback', true, 'free', '2024-07-01')")
+
+        throw new Error('deliberate failure')
+      }),
+      /deliberate failure/,
+    )
+    assert.equal((await named(db, 'TxRawRollback')).length, 0)
+  })
+
   it('reports a backend that cannot do transactions', () => {
     const withoutTransactions: OQLInstance = {
       queryOne: async () => undefined,
@@ -1445,5 +1467,6 @@ describe('runtime: transactions', () => {
     }
     const plain = typedOQL(withoutTransactions, schema, { engine })
     assert.throws(() => plain.transaction(async () => undefined), /does not support transactions/)
+    assert.throws(() => plain.raw('SELECT 1'), /does not support raw SQL/)
   })
 })

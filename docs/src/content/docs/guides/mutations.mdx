@@ -150,6 +150,22 @@ const created = await db.transaction(async (tx) => tx.post.insert({ title, autho
 
 Reads inside the transaction see its own uncommitted writes; other connections do not see them until it commits.
 
+### Locking a row inside a transaction
+
+A transaction stops two writes from half-applying, but it does not stop two *requests* from acting on the same stale snapshot. If a row is read before the transaction opens and the boundaries of the write are derived from it, two concurrent callers can each commit a change computed from the pre-state.
+
+`db.raw(sql, values)` is the escape hatch for SQL the typed layer cannot express — row locking above all. Inside a transaction it runs on that transaction's connection, which is what makes the lock actually hold.
+
+```typescript
+await db.transaction(async (tx) => {
+  await tx.raw('SELECT id FROM availabilities WHERE id = $1 FOR UPDATE', [id])
+  const fresh = await tx.availability.findOneById(id)   // re-read behind the lock
+  // …derive and write from `fresh`, not from anything read earlier
+})
+```
+
+The second caller blocks at the `FOR UPDATE` until the first commits, then re-reads the row it actually has to work from.
+
 <Aside type="caution">
 Both backends support transactions — `@vinctus/oql-pg` pins one pooled connection for the duration, and `@vinctus/oql-petradb` uses its single session, so tests get the same guarantee. `db.transaction` throws on a backend that implements neither. A call nested inside another joins the transaction already in progress rather than starting a new one, so a failure anywhere rolls back everything.
 </Aside>

@@ -25,6 +25,7 @@ export interface OQLInstance {
   }
   // Optional because only the PostgreSQL backend implements transactions
   transaction?<T>(body: (tx: OQLInstance) => Promise<T>): Promise<T>
+  raw?<T = any>(sql: string, values?: unknown[]): Promise<T[]>
 }
 
 // Which engine the query terminals use. 'ast' (default) builds a plain-object
@@ -56,6 +57,10 @@ export type DB<S extends Schema> = {
   readonly __schema: S
   readonly __engine: Engine
   transaction<T>(body: (tx: DB<S>) => Promise<T>): Promise<T>
+  // `raw` is the escape hatch for SQL the typed layer cannot express — row
+  // locking, most of all. Inside a transaction it runs on that transaction's
+  // connection, which is the only way a `SELECT … FOR UPDATE` actually holds.
+  raw<T = any>(sql: string, values?: unknown[]): Promise<T[]>
 } & {
   readonly [Name in keyof S]: EntityHandle<S, Name>
 }
@@ -196,6 +201,10 @@ export function typedOQL<S extends Schema>(
       if (!oql.transaction)
         throw new Error('oql-typed: this OQL backend does not support transactions')
       return oql.transaction((tx) => body(typedOQL(tx, schema, opts)))
+    },
+    raw: <T>(sql: string, values?: unknown[]): Promise<T[]> => {
+      if (!oql.raw) throw new Error('oql-typed: this OQL backend does not support raw SQL')
+      return oql.raw<T>(sql, values)
     },
   }
   for (const entityName of Object.keys(schema)) {

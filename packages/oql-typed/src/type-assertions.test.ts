@@ -1057,6 +1057,17 @@ describe('type: transactions', () => {
     await db.transaction(() => 42)
   }
 
+  async function _rawIsTypedByItsCaller() {
+    const rows = await db.raw<{ id: string }>('SELECT id FROM users WHERE id = $1', ['x'])
+    type _ = AssertTrue<AssertEqual<typeof rows, { id: string }[]>>
+  }
+
+  async function _rawIsAvailableOnTheTransactionHandle() {
+    await db.transaction(async (tx) => {
+      await tx.raw('SELECT id FROM users WHERE id = $1 FOR UPDATE', ['x'])
+    })
+  }
+
   async function _typeErrorsInsideTheBodyStillSurface() {
     await db.transaction(async (tx) => {
       // @ts-expect-error — 'nope' is not a field of user
