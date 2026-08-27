@@ -8,7 +8,16 @@ import type {
   InferProjection,
 } from './types.js'
 import { and, type FilterArg, type FilterContext, type OrderExpr } from './operators.js'
-import { argToAST, fieldRefToAST, operandToAST, whereToAST, buildProjectionAST, type ASTNode } from './ast.js'
+import {
+  argToAST,
+  fieldRefToAST,
+  fieldRefToOQL,
+  joinedFieldPath,
+  operandToAST,
+  whereToAST,
+  buildProjectionAST,
+  type ASTNode,
+} from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // OQLExpr — can appear in both filter and projection positions
@@ -30,7 +39,7 @@ type FnArg = FieldRef<any> | OQLExpr<any> | string | number | boolean | { fieldN
 function renderFnArg(arg: FnArg, ctx: FilterContext): string {
   if (typeof arg === 'object' && arg !== null) {
     if ('__oqlExpr' in arg) return (arg as OQLExpr).toOQL(ctx)
-    if ('fieldName' in arg) return arg.fieldName
+    if ('fieldName' in arg) return fieldRefToOQL(arg)
   }
   if (typeof arg === 'string') return ctx.addParam(arg)
   return String(arg)
@@ -81,7 +90,7 @@ export function caseWhen<T>(
   const operandOQL = (v: unknown, ctx: FilterContext): string => {
     if (v !== null && typeof v === 'object') {
       if ('__oqlExpr' in (v as any)) return (v as OQLExpr).toOQL(ctx)
-      if ('__fieldRef' in (v as any)) return (v as FieldRef).fieldName
+      if ('__fieldRef' in (v as any) || '__relationRef' in (v as any)) return fieldRefToOQL(v)
     }
     return ctx.addParam(v)
   }
@@ -178,12 +187,12 @@ export function outer<S extends Schema, Target extends keyof S>(
   field: RelationFieldRef<S, Target, 'manyToOne'>,
 ): OQLExpr<PKType<S, Target>> & FieldRef<PKType<S, Target>>
 export function outer(field: any): any {
-  // fieldRefToAST resolves the field to its in-scope path (m2o -> ".id"); prefix
+  // A correlated reference names the enclosing query's row, so it takes the
+  // joined path (m2o -> ".id") rather than the foreign-key column; prefix it
   // with the chain's ROOT entity (not the field's immediate owner) to reach the
-  // enclosing query's row across any number of relation hops.
-  const inner = fieldRefToAST(field) as { ids: string[] }
+  // enclosing query across any number of relation hops.
   const root = field.rootEntityName ?? field.entityName
-  const ids = [String(root), ...inner.ids]
+  const ids = [String(root), ...joinedFieldPath(field)]
   const path = ids.join('.')
   return {
     __oqlExpr: true,
@@ -266,7 +275,7 @@ export function alias<Label extends string, T>(
       if ('__oqlExpr' in inner && typeof inner.toOQL === 'function') {
         return `${label}: (${inner.toOQL(ctx)})`
       }
-      return `${label}: (${(inner as FieldRef).fieldName})`
+      return `${label}: (${fieldRefToOQL(inner)})`
     },
     toAST() {
       const expr =

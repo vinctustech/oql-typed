@@ -18,6 +18,7 @@ import {
   textArray,
   integerArray,
 } from './schema.js'
+import type { EntityMeta, Column, Relation } from './schema.js'
 
 export type Role = 'ADMIN' | 'DISPATCHER' | 'DRIVER'
 export type TripState = 'REQUESTED' | 'CONFIRMED' | 'EN_ROUTE' | 'COMPLETED' | 'CANCELLED'
@@ -45,6 +46,7 @@ export const schema = defineSchema({
     color: text(),
     account: manyToOne('account', { column: 'account_id' }),
     place: manyToOne('place', { column: 'place_id' }).nullable(),
+    region: manyToOne('region', { column: 'region_code' }).nullable(),
     users: manyToMany('user', { junction: 'users_stores' }),
     vehicles: oneToMany('vehicle'),
     trips: oneToMany('trip'),
@@ -110,6 +112,12 @@ export const schema = defineSchema({
     trip: manyToOne('trip', { column: 'trip_id' }),
     place: manyToOne('place', { column: 'place_id' }).nullable(),
   }),
+  // A target whose primary key is NOT named `id` — a manyToOne to it can only
+  // be filtered through the foreign-key column, never a `.id` path.
+  region: entity('regions', {
+    code: text().primaryKey(),
+    label: text(),
+  }),
   zone: entity('zones', {
     id: uuid().primaryKey(),
     name: text(),
@@ -125,6 +133,104 @@ export const schema = defineSchema({
 
 export type AppSchema = typeof schema
 
+// ═══════════════════════════════════════════════════════════════════
+// Generate a .dm string from this schema for petradb's DataModel constructor.
+// This is a bit ugly — we'll replace it with a proper generator later.
+// ═══════════════════════════════════════════════════════════════════
+
+export function schemaToDM(s: typeof schema): string {
+  const parts: string[] = []
+
+  // Collect enum definitions
+  const enums = new Map<string, readonly string[]>()
+  for (const [, entry] of Object.entries(s)) {
+    const def = (entry as EntityMeta).definition
+    for (const [, field] of Object.entries(def)) {
+      if (field instanceof Object && (field as any).__kind === 'column') {
+        const col = field as Column
+        if (col.enumName && col.enumValues) enums.set(col.enumName, col.enumValues)
+      }
+    }
+  }
+
+  for (const [name, values] of enums) {
+    parts.push(`enum ${name} { ${values.join(' ')} }`)
+  }
+
+  for (const [entityName, entry] of Object.entries(s)) {
+    const meta = entry as EntityMeta
+    const tableName = meta.tableName
+    const header = tableName ? `entity ${entityName} (${tableName})` : `entity ${entityName}`
+    const lines: string[] = []
+
+    for (const [fieldName, field] of Object.entries(meta.definition)) {
+      if ((field as any).__kind === 'column') {
+        const col = field as Column
+        const pk = col.isPrimaryKey ? '*' : ' '
+        const alias = col.columnAlias ? ` (${col.columnAlias})` : ''
+        const req = !col.isNullable && !col.isPrimaryKey ? '!' : ''
+        let typeName: string
+        switch (col.columnKind) {
+          case 'boolean': typeName = 'bool'; break
+          case 'enum': typeName = col.enumName as string; break
+          case 'decimal':
+            typeName = col.precision !== undefined
+              ? col.scale !== undefined
+                ? `decimal(${col.precision}, ${col.scale})`
+                : `decimal(${col.precision})`
+              : 'decimal'
+            break
+          case 'float': typeName = 'float'; break
+          default: typeName = col.columnKind; break
+        }
+        lines.push(`  ${pk}${fieldName}${alias}: ${typeName}${req}`)
+      } else {
+        const rel = field as Relation
+        switch (rel.relationKind) {
+          case 'manyToOne': {
+            const alias = rel.column ? ` (${rel.column})` : ''
+            const req = rel.isNullable ? '' : '!'
+            lines.push(`  ${fieldName}${alias}: ${rel.target}${req}`)
+            break
+          }
+          case 'oneToMany':
+            lines.push(`  ${fieldName}: [${rel.target}]`)
+            break
+          case 'manyToMany':
+            lines.push(`  ${fieldName}: [${rel.target}] (${rel.junction})`)
+            break
+          case 'oneToOne': {
+            const refPart = rel.reference ? `.${rel.reference}` : ''
+            lines.push(`  ${fieldName}: <${rel.target}>${refPart}`)
+            break
+          }
+        }
+      }
+    }
+
+    parts.push(`${header} {\n${lines.join('\n')}\n}`)
+  }
+
+  // Junction tables
+  const junctions = new Map<string, { from: string; to: string }>()
+  for (const [entityName, entry] of Object.entries(s)) {
+    const meta = entry as EntityMeta
+    for (const [, field] of Object.entries(meta.definition)) {
+      if ((field as any).__kind === 'relation') {
+        const rel = field as Relation
+        if (rel.relationKind === 'manyToMany' && rel.junction && !junctions.has(rel.junction)) {
+          junctions.set(rel.junction, { from: entityName, to: rel.target })
+        }
+      }
+    }
+  }
+  for (const [junction, { from, to }] of junctions) {
+    parts.push(`entity ${junction} {\n  ${from} (${from}_id): ${from}\n  ${to} (${to}_id): ${to}\n}`)
+  }
+
+  return parts.join('\n\n')
+}
+
 // Seed SQL for petradb runtime tests
 export const seedSQL = `CREATE TABLE accounts (
   id UUID PRIMARY KEY,
@@ -139,13 +245,18 @@ CREATE TABLE places (
   longitude DOUBLE NOT NULL,
   address TEXT
 );
+CREATE TABLE regions (
+  code TEXT PRIMARY KEY,
+  label TEXT NOT NULL
+);
 CREATE TABLE stores (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
   enabled BOOLEAN NOT NULL,
   color TEXT NOT NULL,
   account_id UUID REFERENCES accounts(id),
-  place_id UUID REFERENCES places(id)
+  place_id UUID REFERENCES places(id),
+  region_code TEXT REFERENCES regions(code)
 );
 CREATE TABLE users (
   id UUID PRIMARY KEY,
@@ -245,8 +356,11 @@ INSERT INTO accounts VALUES ('${ID.a1}', 'Acme Corp', true, 'pro', '2024-01-01T0
 INSERT INTO places VALUES ('${ID.p1}', 45.5, -73.6, '123 Main St');
 INSERT INTO places VALUES ('${ID.p2}', 45.6, -73.7, NULL);
 
-INSERT INTO stores VALUES ('${ID.s1}', 'Downtown', true, '#ff0000', '${ID.a1}', '${ID.p1}');
-INSERT INTO stores VALUES ('${ID.s2}', 'Airport', false, '#00ff00', '${ID.a1}', '${ID.p2}');
+INSERT INTO regions VALUES ('QC', 'Quebec');
+INSERT INTO regions VALUES ('ON', 'Ontario');
+
+INSERT INTO stores VALUES ('${ID.s1}', 'Downtown', true, '#ff0000', '${ID.a1}', '${ID.p1}', 'QC');
+INSERT INTO stores VALUES ('${ID.s2}', 'Airport', false, '#00ff00', '${ID.a1}', '${ID.p2}', NULL);
 
 INSERT INTO users VALUES ('${ID.u1}', 'Alice', 'Smith', 'alice@example.com', 'ADMIN', true, '2024-06-15T00:00:00Z', '${ID.a1}');
 INSERT INTO users VALUES ('${ID.u2}', 'Bob', 'Jones', 'bob@example.com', 'DRIVER', true, NULL, '${ID.a1}');

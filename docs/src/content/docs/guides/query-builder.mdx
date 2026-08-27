@@ -69,7 +69,7 @@ queryBuilder(db, 'post')
 
 ```oql
 post {id title}
-  [status = :p0 AND author.id = :p1 AND tag.id IN :p2]
+  [status = :p0 AND &author = :p1 AND &tag IN :p2]
 ```
 
 The auto-terminating shortcuts (`.findOneBy()`, `.findOneById()`) are **not** available on `queryBuilder` — they call `.one()` internally, which conflicts with the conditional-builder shape. Use `.findBy(db.entity.id, id).one()` if you need that.

@@ -124,7 +124,7 @@ OQL's parser rejects chained dotted paths inside `EXISTS` (`EXISTS(author.commen
     // ✓ Two queries instead:
     post {id author {id}} [slug = :p0]
 
-    comment {id} [post.id = :p0 AND author.role = :p1]
+    comment {id} [&post = :p0 AND author.role = :p1]
     ```
   </TabItem>
 </Tabs>
@@ -146,7 +146,7 @@ query(db, 'comment')
 ```
 
 ```oql
-comment {id body} [post.id = :p0 AND &parent IS NULL]
+comment {id body} [&post = :p0 AND &parent IS NULL]
 ```
 
 Without `ref()`, the query would load the `parent` entity just to check nullability.
@@ -207,7 +207,7 @@ comment {
   body
   createdAt
   author {firstName lastName}
-} [post.id = :p0 AND &parent IS NULL] <createdAt DESC>
+} [&post = :p0 AND &parent IS NULL] <createdAt DESC>
 ```
 
 ## Inspecting queries in tests

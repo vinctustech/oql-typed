@@ -162,6 +162,22 @@ Why a helper and not a plain array? A bare `const fields = ['id', 'title']` wide
     post [author.role = :p0 AND category.slug IN :p1]
     ```
   </TabItem>
+  <TabItem label="The relation itself">
+    ```typescript
+    query(db, 'post').where(and(
+      eq(db.post.author, authorId),
+      inList(db.post.category, categoryIds),
+    ))
+    ```
+
+    Matching a relation by key reads the foreign-key column on the row (OQL's
+    `&author`) instead of joining the target table to read its primary key —
+    same rows, but the database can use an index on that column.
+
+    ```oql
+    post [&author = :p0 AND &category IN :p1]
+    ```
+  </TabItem>
 </Tabs>
 
 ## Lookup shortcuts
@@ -191,7 +207,7 @@ For the most common filter shapes there are dedicated methods that avoid the `wh
     ```oql
     user [email = :p0]
 
-    post [status = :p0 AND author.id = :p1]
+    post [status = :p0 AND &author = :p1]
     ```
   </TabItem>
   <TabItem label="findIn">
@@ -209,7 +225,7 @@ For the most common filter shapes there are dedicated methods that avoid the `wh
     ```oql
     post [status IN :p0]
 
-    trip [store.id = :p0 AND state IN :p1]
+    trip [&store = :p0 AND state IN :p1]
     ```
   </TabItem>
   <TabItem label="findOneBy">
@@ -426,7 +442,7 @@ Use `.toOQL()` in tests to assert on the query shape without hitting a database.
       id
       body
       author {firstName}
-    } [post.id = :p0 AND &parent IS NULL] <createdAt DESC>
+    } [&post = :p0 AND &parent IS NULL] <createdAt DESC>
     ```
   </TabItem>
 </Tabs>

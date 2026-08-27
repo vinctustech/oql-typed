@@ -1,10 +1,9 @@
-import { Relation } from './schema.js'
 import type { FieldRef, RelationFieldRef, Schema } from './types.js'
 import type { OQLExpr } from './expressions.js'
-import { litToAST, fieldRefToAST, operandToAST, foldInfix, type ASTNode } from './ast.js'
+import { litToAST, fieldRefToAST, fieldRefToOQL, operandToAST, foldInfix, type ASTNode } from './ast.js'
 
 // A filter operand: a scalar field ref OR a manyToOne relation ref
-// (manyToOne auto-resolves to its dotted FK path at runtime).
+// (manyToOne auto-resolves to its foreign-key column at runtime).
 export type FilterField<T = unknown> = FieldRef<T> | RelationFieldRef<Schema, any, 'manyToOne'>
 
 // ══════════════════════════════════════════════════════════════════════
@@ -41,18 +40,8 @@ function resolveField(field: FilterField<any>, ctx: FilterContext): string {
   if ('__oqlExpr' in (field as any) && typeof (field as any).toOQL === 'function') {
     return (field as any).toOQL(ctx)
   }
-  // manyToOne relation — resolve to dotted FK path (store → store.id)
-  if ('__relationRef' in (field as any)) {
-    const rel = (field as any).builder as Relation<any, any, any>
-    if (rel && rel.relationKind === 'manyToOne') {
-      // Find PK of target entity via schema lookup stored on the ref
-      // The fieldName already contains the relation path; we append the PK name
-      // The schema is carried on db handle, but relation refs don't have it.
-      // Convention: manyToOne FKs always resolve to ".id" — matching OQL's default PK naming.
-      return `${(field as any).fieldName}.id`
-    }
-  }
-  return (field as FieldRef).fieldName
+
+  return fieldRefToOQL(field)
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -67,7 +56,9 @@ function renderOperand(value: unknown, ctx: FilterContext): string {
     if ('__oqlExpr' in (value as any) && typeof (value as any).toOQL === 'function') {
       return (value as OQLExpr).toOQL(ctx)
     }
-    if ('__fieldRef' in (value as any)) return resolveField(value as FilterField<any>, ctx)
+    if ('__fieldRef' in (value as any) || '__relationRef' in (value as any)) {
+      return resolveField(value as FilterField<any>, ctx)
+    }
   }
   return ctx.addParam(value)
 }
@@ -369,7 +360,7 @@ export function asc(
   return {
     __orderExpr: true,
     toOQL() {
-      return `${(field as FieldRef).fieldName} ${dir}`
+      return `${fieldRefToOQL(field)} ${dir}`
     },
     toAST() {
       return { expr: fieldRefToAST(field), dir }
@@ -385,7 +376,7 @@ export function desc(
   return {
     __orderExpr: true,
     toOQL() {
-      return `${(field as FieldRef).fieldName} ${dir}`
+      return `${fieldRefToOQL(field)} ${dir}`
     },
     toAST() {
       return { expr: fieldRefToAST(field), dir }

@@ -1,7 +1,7 @@
 import type { FieldRef } from './types.js'
 import type { FilterContext } from './operators.js'
 import type { OQLExpr } from './expressions.js'
-import { argToAST, foldInfix } from './ast.js'
+import { argToAST, fieldRefToOQL, foldInfix } from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Typed wrappers for common SQL functions.
@@ -20,7 +20,7 @@ type AnyArg = FieldRef<any> | OQLExpr<any> | string | number | boolean
 function renderArg(arg: AnyArg, ctx: FilterContext): string {
   if (typeof arg === 'object' && arg !== null) {
     if ('__oqlExpr' in (arg as any)) return (arg as OQLExpr).toOQL(ctx)
-    if ('fieldName' in (arg as any)) return (arg as FieldRef).fieldName
+    if ('fieldName' in (arg as any)) return fieldRefToOQL(arg)
   }
   if (typeof arg === 'string') return ctx.addParam(arg)
   return String(arg)

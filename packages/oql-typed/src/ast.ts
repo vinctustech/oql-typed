@@ -21,21 +21,49 @@ export function litToAST(value: unknown): ASTNode {
   return { kind: 'str', v: String(value) }
 }
 
+// True for a manyToOne relation ref (db.trip.store), the one field shape that
+// names a relation rather than a column.
+export function isManyToOneRef(field: any): boolean {
+  return (
+    field !== null &&
+    typeof field === 'object' &&
+    '__relationRef' in field &&
+    field.builder?.relationKind === 'manyToOne'
+  )
+}
+
 // A field operand (filter LHS, order key) -> attr / ref / expr node.
 //  - OQLExpr (fn / alias / currentTimestamp / ...) -> its own toAST()
-//  - manyToOne relation ref -> dotted FK path + ".id"  (matches resolveField)
+//  - manyToOne relation ref -> `ref` node: the foreign-key column itself, so
+//    the query never joins the target table just to read its primary key
 //  - plain FieldRef -> dotted attribute path
 export function fieldRefToAST(field: any): ASTNode {
   if (field && typeof field === 'object' && '__oqlExpr' in field && typeof field.toAST === 'function') {
     return field.toAST()
   }
-  if (field && typeof field === 'object' && '__relationRef' in field) {
-    const rel = field.builder
-    if (rel && rel.relationKind === 'manyToOne') {
-      return { kind: 'attr', ids: [...String(field.fieldName).split('.'), 'id'] }
-    }
+  if (isManyToOneRef(field)) {
+    return { kind: 'ref', ids: String(field.fieldName).split('.') }
   }
   return { kind: 'attr', ids: String(field.fieldName).split('.') }
+}
+
+// The OQL text for a field operand — the string-path twin of fieldRefToAST.
+// OQL expressions are not handled here because they need a FilterContext to
+// parameterize their operands; callers check for those first.
+export function fieldRefToOQL(field: any): string {
+  return isManyToOneRef(field) ? `&${field.fieldName}` : String(field.fieldName)
+}
+
+// The dotted path of a field as reached through joins — a manyToOne relation
+// resolves to its target's primary key. `outer()` builds correlated references
+// on this form, which names the row rather than the foreign key value.
+export function joinedFieldPath(field: any): string[] {
+  if (field && typeof field === 'object' && '__oqlExpr' in field && typeof field.toAST === 'function') {
+    return (field.toAST() as { ids?: string[] }).ids ?? []
+  }
+  const path = String(field.fieldName).split('.')
+
+  return isManyToOneRef(field) ? [...path, 'id'] : path
 }
 
 // Comparison/CASE operand: an OQLExpr emits inline, a FieldRef emits as a
@@ -45,7 +73,7 @@ export function operandToAST(value: unknown): ASTNode {
     if ('__oqlExpr' in (value as any) && typeof (value as any).toAST === 'function') {
       return (value as any).toAST()
     }
-    if ('__fieldRef' in (value as any)) return fieldRefToAST(value)
+    if ('__fieldRef' in (value as any) || '__relationRef' in (value as any)) return fieldRefToAST(value)
   }
   return litToAST(value)
 }

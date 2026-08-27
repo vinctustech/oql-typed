@@ -165,9 +165,18 @@ Access fields on related entities directly in filters:
 
 ```typescript
 .where(and(
-  eq(db.trip.store.account.id, accountId),     // multi-level FK chain
-  inList(db.trip.store.id, storeIds),
+  eq(db.trip.store.account.name, accountName), // multi-level path — joins accounts
+  inList(db.trip.store, storeIds),             // the relation itself — no join
 ))
+```
+
+Comparing the **relation itself** (`db.trip.store`) reads the foreign-key column
+on the row — OQL's `&store` — instead of joining the target table to read its
+primary key. Same rows, but the database can use an index on that column, so
+prefer it over the `.id` path whenever you are matching by key:
+
+```oql
+trip [store.account.name = :p0 AND &store IN :p1]
 ```
 
 ## Operators

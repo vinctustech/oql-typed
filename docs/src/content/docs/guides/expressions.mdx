@@ -136,7 +136,9 @@ Comparison operators accept an `OQLExpr` on the value side, not just a literal. 
 
 ## `ref(m2o)` — the `&` reference operator
 
-OQL's `&field` operator returns the foreign-key **column value itself**, rather than joining to the target entity. Useful when you only need to test the FK (e.g. for null-checks) without loading the related row. Its type is inferred as the target entity's primary-key type (e.g. a `uuid` FK → `string`).
+OQL's `&field` operator returns the foreign-key **column value itself**, rather than joining to the target entity. Its type is inferred as the target entity's primary-key type (e.g. a `uuid` FK → `string`).
+
+In filters and ordering you rarely need to write it: a manyToOne relation used as a value (`eq(db.trip.store, storeId)`) already resolves to `&store`. Reach for `ref(...)` where an expression is required — a function argument, an aliased projection, a `CASE` result.
 
 ```typescript
 import { ref, isNull } from '@vinctus/oql-typed'

@@ -49,12 +49,12 @@ describe('toAST() shape', () => {
     })
   })
 
-  it('eq on a manyToOne FK resolves to .id', () => {
+  it('eq on a manyToOne FK resolves to the foreign-key column', () => {
     const ast = query(db, 'trip').select('id').where(eq(db.trip.vehicle, 'v1')).toAST() as any
     assert.deepStrictEqual(ast.select, {
       kind: 'infix',
       op: '=',
-      left: { kind: 'attr', ids: ['vehicle', 'id'] },
+      left: { kind: 'ref', ids: ['vehicle'] },
       right: { kind: 'str', v: 'v1' },
     })
   })
@@ -176,7 +176,7 @@ describe('toAST() shape', () => {
 
   it('IS NULL on a manyToOne FK', () => {
     const ast = query(db, 'trip').select('id').where(isNull(db.trip.returnTripFor)).toAST() as any
-    assert.deepStrictEqual(ast.select, { kind: 'postfix', op: 'IS NULL', expr: { kind: 'attr', ids: ['returnTripFor', 'id'] } })
+    assert.deepStrictEqual(ast.select, { kind: 'postfix', op: 'IS NULL', expr: { kind: 'ref', ids: ['returnTripFor'] } })
   })
 
   it('EXISTS on a relation', () => {
@@ -308,7 +308,7 @@ describe('toAST() shape', () => {
       select: {
         kind: 'infix',
         op: '!=',
-        left: { kind: 'attr', ids: ['store', 'id'] },
+        left: { kind: 'ref', ids: ['store'] },
         right: { kind: 'attr', ids: ['vehicle', 'store', 'id'] },
       },
     })
@@ -338,7 +338,7 @@ describe('toAST() shape', () => {
       select: {
         kind: 'infix',
         op: '!=',
-        left: { kind: 'attr', ids: ['place', 'id'] },
+        left: { kind: 'ref', ids: ['place'] },
         right: { kind: 'attr', ids: ['trip', 'store', 'place', 'id'] },
       },
     })
