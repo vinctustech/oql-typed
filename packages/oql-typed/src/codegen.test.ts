@@ -36,7 +36,16 @@ describe('codegen: parser', () => {
 
   it('parses oneToMany with reverse-ref suffix', () => {
     const dm = parseDM('entity foo { *id: uuid\n bars: [bar].foo }')
-    assert.equal(dm.entities[0].fields[1].type.kind, 'oneToMany')
+    const bars = dm.entities[0].fields[1]
+    assert.equal(bars.type.kind, 'oneToMany')
+    if (bars.type.kind === 'oneToMany') assert.equal(bars.type.reference, 'foo')
+  })
+
+  it('parses oneToMany without a reverse-ref suffix', () => {
+    const dm = parseDM('entity foo { *id: uuid\n bars: [bar] }')
+    const bars = dm.entities[0].fields[1]
+    assert.equal(bars.type.kind, 'oneToMany')
+    if (bars.type.kind === 'oneToMany') assert.equal(bars.type.reference, undefined)
   })
 
   it('parses manyToMany with junction', () => {
@@ -79,6 +88,26 @@ describe('codegen: output format', () => {
   it('relations use string literal targets', () => {
     const ts = generateSchemaTS(parseDM('entity user { *id: uuid\n account (account_id): account! }'))
     assert.ok(ts.includes("manyToOne('account', { column: 'account_id' })"))
+  })
+
+  it('keeps a oneToMany reverse reference', () => {
+    const ts = generateSchemaTS(parseDM('entity foo { *id: uuid\n bars: [bar].foo }'))
+    assert.ok(ts.includes("bars: oneToMany('bar', { reference: 'foo' })"))
+  })
+
+  it('omits the option object when a oneToMany has no reverse reference', () => {
+    const ts = generateSchemaTS(parseDM('entity foo { *id: uuid\n bars: [bar] }'))
+    assert.ok(ts.includes("bars: oneToMany('bar'),"))
+  })
+
+  it('keeps a oneToOne reference', () => {
+    const ts = generateSchemaTS(parseDM('entity foo { *id: uuid\n bar: <bar>.foo }'))
+    assert.ok(ts.includes("bar: oneToOne('bar', { reference: 'foo' })"))
+  })
+
+  it('omits the option object when a oneToOne has no reference', () => {
+    const ts = generateSchemaTS(parseDM('entity foo { *id: uuid\n bar: <bar> }'))
+    assert.ok(ts.includes("bar: oneToOne('bar'),"))
   })
 
   it('does NOT emit @ts-nocheck', () => {

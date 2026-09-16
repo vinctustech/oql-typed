@@ -1217,6 +1217,88 @@ describe('runtime: mutations', () => {
     const after = await query(db, 'account').select('id').where(inList(db.account.id, ids)).many()
     assert.equal(after.length, 0, 'all three rows should be gone after bulkDelete')
   })
+
+  // OQL builds one statement for the whole batch, so every patch has to set
+  // the same columns — only the values may differ from row to row.
+  it('bulkUpdate patches many rows, each with its own values', async () => {
+    const first = 'a0000000-0000-4000-8000-0000000000c1'
+    const second = 'a0000000-0000-4000-8000-0000000000c2'
+    for (const id of [first, second]) {
+      await db.account.insert({ id, name: 'Before', enabled: true, plan: 'free', createdAt: new Date('2024-07-01T00:00:00Z') })
+    }
+
+    await db.account.bulkUpdate([
+      [first, { name: 'First', plan: 'pro' }],
+      [second, { name: 'Second', plan: 'trial' }],
+    ])
+
+    const rows = await query(db, 'account')
+      .select('id', 'name', 'plan')
+      .where(inList(db.account.id, [first, second]))
+      .orderBy(asc(db.account.id))
+      .many()
+    assert.deepStrictEqual(
+      rows.map((row) => [row.name, row.plan]),
+      [
+        ['First', 'pro'],
+        ['Second', 'trial'],
+      ],
+    )
+  })
+
+  it('link adds a manyToMany row', async () => {
+    const before = await query(db, 'customer').select('id', { places: ['id'] }).where(eq(db.customer.id, ID.c2)).one()
+    assert.ok(before)
+    assert.equal(before.places.length, 0)
+
+    await db.customer.link(ID.c2, 'places', ID.p1)
+
+    const after = await query(db, 'customer').select('id', { places: ['id'] }).where(eq(db.customer.id, ID.c2)).one()
+    assert.ok(after)
+    assert.deepStrictEqual(after.places.map((place) => place.id), [ID.p1])
+  })
+
+  it('link is visible from both sides of the relation', async () => {
+    await db.user.link(ID.u3, 'stores', ID.s2)
+
+    const user = await query(db, 'user').select('id', { stores: ['id'] }).where(eq(db.user.id, ID.u3)).one()
+    assert.ok(user)
+    assert.deepStrictEqual(user.stores.map((store) => store.id), [ID.s2])
+
+    const store = await query(db, 'store').select('id', { users: ['id'] }).where(eq(db.store.id, ID.s2)).one()
+    assert.ok(store)
+    assert.ok(store.users.some((linked) => linked.id === ID.u3))
+
+    await db.user.unlink(ID.u3, 'stores', ID.s2)
+    const afterUnlink = await query(db, 'store').select('id', { users: ['id'] }).where(eq(db.store.id, ID.s2)).one()
+    assert.ok(afterUnlink)
+    assert.ok(!afterUnlink.users.some((linked) => linked.id === ID.u3))
+  })
+
+  it('unlink removes the manyToMany row and leaves the rest alone', async () => {
+    await db.customer.link(ID.c2, 'places', ID.p2)
+    await db.customer.unlink(ID.c2, 'places', ID.p1)
+
+    const after = await query(db, 'customer').select('id', { places: ['id'] }).where(eq(db.customer.id, ID.c2)).one()
+    assert.ok(after)
+    assert.deepStrictEqual(after.places.map((place) => place.id), [ID.p2])
+
+    const untouched = await query(db, 'customer').select('id', { places: ['id'] }).where(eq(db.customer.id, ID.c1)).one()
+    assert.ok(untouched)
+    assert.equal(untouched.places.length, 2)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// close() — releases whatever the backend holds; petradb holds nothing
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: close', () => {
+  it('is a no-op on a backend with no connection to release', async () => {
+    db.close()
+    const rows = await db.store.select('id').many()
+    assert.equal(rows.length, 2)
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════

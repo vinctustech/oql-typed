@@ -6,6 +6,9 @@ import { createRequire } from 'node:module'
 import { OQL_PG } from '@vinctus/oql-pg'
 import { typedOQL } from './db.js'
 import type { DB, Engine, OQLInstance } from './db.js'
+// Query starters register themselves with db.ts on load, so the factories
+// pull the module in rather than relying on the caller having imported it.
+import './query.js'
 import { generateDM } from './generate-dm.js'
 import type { Schema } from './types.js'
 
