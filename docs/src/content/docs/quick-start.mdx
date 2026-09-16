@@ -1,18 +1,18 @@
 ---
 title: Quick start
-description: Define a schema, wire up OQL, run a typed query.
+description: Define a schema, open a database, run a typed query.
 ---
 
 import { Steps, Tabs, TabItem, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
 
-In five minutes you'll have a typed schema, a working OQL instance, and your first compile-time checked query.
+In five minutes you'll have a typed schema, a live database handle, and your first compile-time checked query.
 
 <Steps>
 
-1. **Install the library and a backend.**
+1. **Install the library.**
 
    ```bash
-   npm install @vinctus/oql-typed @vinctus/oql-pg
+   npm install @vinctus/oql-typed
    ```
 
 2. **Define your schema in TypeScript.**
@@ -56,22 +56,25 @@ In five minutes you'll have a typed schema, a working OQL instance, and your fir
 
    The **entity name** (`'user'`, `'post'`) is the key in `defineSchema(...)`. Relations reference other entities by that same string literal — no thunks, no circular imports.
 
-3. **Instantiate OQL and wrap it.**
+3. **Open the database.**
 
-   OQL itself runs off a `.dm` data-model string. The recommended workflow is to keep `schema.dm` alongside `schema.ts` and load it at startup. You can bootstrap `schema.ts` from `schema.dm` with the [`oql-typed-codegen` CLI](/oql-typed/guides/codegen/).
+   `createPostgresDB` derives the OQL data model from the schema and builds the backend for you — there is no `.dm` file to write or keep in sync.
 
    ```typescript
    // db.ts
-   import { readFileSync } from 'node:fs'
-   import { typedOQL } from '@vinctus/oql-typed'
-   import { OQL_PG } from '@vinctus/oql-pg'
+   import { createPostgresDB } from '@vinctus/oql-typed'
    import { schema } from './schema.js'
 
-   const dm = readFileSync(new URL('./schema.dm', import.meta.url), 'utf8')
-   const oqlInstance = new OQL_PG(dm, host, port, database, username, password)
-
-   export const db = typedOQL(oqlInstance, schema)
+   export const db = createPostgresDB(schema, {
+     host: process.env.DB_HOST ?? 'localhost',
+     port: 5432,
+     database: 'blog',
+     user: 'blog',
+     password: process.env.DB_PASSWORD ?? '',
+   })
    ```
+
+   In tests, swap the factory and keep everything else: `createPetraDB(schema)` runs the same schema in memory (install the optional `@vinctus/oql-petradb` peer first).
 
 4. **Write typed queries.**
 

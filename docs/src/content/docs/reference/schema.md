@@ -62,7 +62,7 @@ Relation targets are **string literals** matching keys in `defineSchema(...)`.
 | Function | Description |
 |----------|-------------|
 | `manyToOne(target, { column })` | Foreign key to one target row. Field access on a `manyToOne` field returns a `RelationFieldRef` that supports dotted paths (`db.post.author.email`). |
-| `oneToMany(target)` | Reverse FK — a typed array of target rows. |
+| `oneToMany(target, { reference? })` | Reverse FK — a typed array of target rows. `reference` names the field on the target that holds the FK back, for when the target has more than one FK to this entity. |
 | `manyToMany(target, { junction })` | Junction-table relation. |
 | `oneToOne(target, { reference? })` | Exactly-one relation. `reference` names the field on the target that holds the FK back. |
 
@@ -70,9 +70,48 @@ Every relation supports `.nullable()` for optional / nullable cases.
 
 ## DB handle
 
-### `typedOQL(oqlInstance, schema)`
+### `createPostgresDB(schema, connection, options?)`
 
-Wraps an `OQLInstance` and returns a `DB<S>` whose entity handles (`db.user`, `db.post`, ...) carry typed field refs **and** the full set of query starter methods (`select`, `where`, `findBy`, `findIn`, `findOneBy`, `findOneById`, `orderBy`, `limit`, `offset`, `one`, `many`, `count`, `toOQL`).
+Builds a PostgreSQL-backed `DB<S>`. The data model is generated from `schema`, so nothing else is needed.
+
+```typescript
+const db = createPostgresDB(schema, {
+  host: 'localhost',
+  port: 5432,
+  database: 'blog',
+  user: 'blog',
+  password: secret,
+  // ssl: false, idleTimeoutMillis: 7200000, max: 10  ← defaults
+})
+```
+
+| Connection field | Default | Description |
+|------------------|---------|-------------|
+| `host`, `port`, `database`, `user`, `password` | — | Required. |
+| `ssl` | `false` | `true`, or the driver's SSL option object. |
+| `idleTimeoutMillis` | `7200000` | How long a pooled connection may idle. |
+| `max` | `10` | Pool size. |
+
+`options.engine` selects the query engine — `'ast'` (default) or `'string'`.
+
+### `createPetraDB(schema, options?)`
+
+Builds an in-memory `DB<S>` on the PetraDB engine, for tests. `@vinctus/oql-petradb` is an **optional peer dependency**: install it to use this factory, and the call throws a message naming the package if it is missing.
+
+```typescript
+const db = createPetraDB(schema)
+const persisted = createPetraDB(schema, { storage: 'persistent', path: './fixture.db' })
+```
+
+`options.storage` is `'memory'` (default), `'persistent'` or `'text'`; `options.path` is the file for the latter two; `options.engine` is as above.
+
+### `db.close()`
+
+Releases whatever the backend holds — the PostgreSQL connection pool, above all. A no-op on backends that hold nothing open, so it is always safe to call on shutdown.
+
+### `typedOQL(oqlInstance, schema, options?)`
+
+The escape hatch for a backend you construct yourself. Wraps an `OQLInstance` and returns a `DB<S>` whose entity handles (`db.user`, `db.post`, ...) carry typed field refs **and** the full set of query starter methods (`select`, `where`, `findBy`, `findIn`, `findOneBy`, `findOneById`, `orderBy`, `limit`, `offset`, `one`, `many`, `count`, `toOQL`).
 
 ```typescript
 const db = typedOQL(oqlInstance, schema)
@@ -89,10 +128,9 @@ db.post.findOneById(id)                          // ditto
 
 | Function | Description |
 |----------|-------------|
+| `generateDM(schema)` | Emits the OQL `.dm` data model for a schema. The backend factories call this for you. |
 | `parseDMAndGenerate(dmString)` | Parses a `.dm` file and emits TypeScript schema source. |
 | `parseDM(dmString)` | Lower-level parser; returns a `ParsedDataModel` object. |
 | `generateSchemaTS(parsedDM)` | Emits TypeScript source from a `ParsedDataModel`. |
 
-:::caution
-`generateDM(...)` (the schema-object → `.dm` direction) is currently a stub that throws — it's being rebuilt for the schema-object API. For now, keep your `.dm` file as the source of truth and bootstrap TypeScript from it with `parseDMAndGenerate` or the `oql-typed-codegen` CLI. See [DM codegen](/oql-typed/guides/codegen/).
-:::
+The `.dm`-to-TypeScript direction is a one-time migration step for projects that already have a data-model file. See [DM codegen](/oql-typed/guides/codegen/).

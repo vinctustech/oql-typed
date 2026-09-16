@@ -1,6 +1,6 @@
 ---
 title: Mutations
-description: insert / update / delete / bulkDelete as typed methods on every entity handle.
+description: insert / update / delete / bulkDelete / bulkUpdate / link / unlink as typed methods on every entity handle.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
@@ -127,6 +127,38 @@ Removes many rows by primary key in one call. Returns `Promise<void>`.
 ```typescript
 await db.tripStep.bulkDelete(removedStepIds)   // ids: (string | number)[]
 ```
+
+## `db.<entity>.bulkUpdate(updates)`
+
+Patches many rows in one call. Each entry is a `[id, patch]` pair, and the patch is typed exactly like `update`'s. Returns `Promise<void>`.
+
+```typescript
+await db.post.bulkUpdate([
+  [firstId,  { status: 'PUBLISHED', publishedAt: new Date() }],
+  [secondId, { status: 'ARCHIVED',  publishedAt: null }],
+])
+```
+
+<Aside type="caution">
+OQL builds one statement for the whole batch, so every patch has to set the **same fields** — only the values may differ from row to row. A batch whose patches touch different fields is rejected at runtime.
+</Aside>
+
+## `db.<entity>.link(id, relation, targetId)` / `unlink(...)`
+
+Adds or removes one row of a `manyToMany` junction table. `relation` is restricted to that entity's `manyToMany` field names, so a typo or a relation of the wrong kind is a compile error.
+
+```typescript
+await db.post.link(postId, 'tags', tagId)      // post ↔ tag junction row added
+await db.post.unlink(postId, 'tags', tagId)    // …and removed again
+```
+
+```typescript
+db.post.link(postId, 'author', userId)
+//                   ^^^^^^^^
+// Type error: 'author' is a manyToOne, not a manyToMany
+```
+
+Set a `manyToOne` by assigning its FK id through `insert` or `update` instead — `link`/`unlink` exist for junction tables only.
 
 ## `db.transaction(body)`
 

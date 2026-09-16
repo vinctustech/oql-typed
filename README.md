@@ -10,23 +10,22 @@ Compile-time typed queries for [OQL](https://github.com/vinctustech/oql). Define
 npm install @vinctus/oql-typed
 ```
 
-Requires one of the OQL backends as a peer dependency:
-
-- `@vinctus/oql-pg` — PostgreSQL backend
-- `@vinctus/oql-petradb` — in-memory backend (great for tests)
+That's the whole install for PostgreSQL. The in-memory backend used in tests, `@vinctus/oql-petradb`, is an optional peer — install it only if you use `createPetraDB`.
 
 ## Quick taste
 
 ```typescript
-import { entity, uuid, text, boolean, typedOQL } from '@vinctus/oql-typed'
+import { defineSchema, entity, uuid, text, boolean, createPostgresDB } from '@vinctus/oql-typed'
 
-const user = entity('user', 'users', {
-  id:      uuid().primaryKey(),
-  email:   text(),
-  enabled: boolean(),
+const schema = defineSchema({
+  user: entity('users', {
+    id:      uuid().primaryKey(),
+    email:   text(),
+    enabled: boolean(),
+  }),
 })
 
-const db = typedOQL(oql, { user })
+const db = createPostgresDB(schema, { host, port, database, user, password })
 
 const active = await db.user.select('id', 'email').findBy(db.user.enabled, true).many()
 // => { id: string, email: string }[]

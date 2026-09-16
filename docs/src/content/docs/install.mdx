@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install @vinctus/oql-typed and a backend.
+description: Install @vinctus/oql-typed — the only dependency you need.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
@@ -25,36 +25,40 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
   </TabItem>
 </Tabs>
 
-## Pick a backend
+That's the whole install. The PostgreSQL driver (`@vinctus/oql-pg`) comes along as a dependency, and the schema you declare in TypeScript is the only data model — there is no `.dm` file to keep in sync.
 
-`@vinctus/oql-typed` doesn't ship a database driver — it delegates to a peer backend.
+## Pick a backend
 
 <Tabs>
   <TabItem label="PostgreSQL (production)">
-    ```bash
-    npm install @vinctus/oql-pg
-    ```
+    Nothing else to install.
 
     ```typescript
-    import { OQL_PG } from '@vinctus/oql-pg'
+    import { createPostgresDB } from '@vinctus/oql-typed'
+    import { schema } from './schema.js'
 
-    const oql = new OQL_PG(
-      dm,
-      'localhost', 5432,
-      'mydb', 'user', 'pass',
-    )
+    export const db = createPostgresDB(schema, {
+      host: 'localhost',
+      port: 5432,
+      database: 'mydb',
+      user: 'user',
+      password: 'pass',
+    })
     ```
   </TabItem>
   <TabItem label="In-memory (tests)">
+    The in-memory backend is an optional peer — install it only if you use it.
+
     ```bash
-    npm install @vinctus/oql-petradb
+    npm install --save-dev @vinctus/oql-petradb
     ```
 
     ```typescript
-    import { OQL_PETRADB } from '@vinctus/oql-petradb'
+    import { createPetraDB } from '@vinctus/oql-typed'
+    import { schema } from './schema.js'
 
-    const oql = new OQL_PETRADB(dm)
-    // no external DB needed — perfect for unit tests
+    export const db = createPetraDB(schema)
+    // no external database needed — perfect for unit tests
     ```
   </TabItem>
 </Tabs>
@@ -66,5 +70,5 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 - **ESM** — set `"type": "module"` in your `package.json`
 
 <Aside type="tip">
-You can mix the two backends: run production against PostgreSQL via `@vinctus/oql-pg` and your test suite against `@vinctus/oql-petradb`. The same schema definition works with both.
+You can mix the two backends: run production on PostgreSQL with `createPostgresDB` and your test suite on `createPetraDB`. The same schema definition drives both.
 </Aside>

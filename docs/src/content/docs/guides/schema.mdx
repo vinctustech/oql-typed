@@ -32,7 +32,7 @@ export const schema = defineSchema({
 The **entity name** (used in `query(db, 'category')`, OQL strings, and relation targets) is the **key** in the `defineSchema({...})` object — not an argument to `entity()`.
 
 <Aside type="note">
-`defineSchema` is just an identity function with a `const` generic — it preserves literal types so TypeScript can infer everything (entity names, enum values, field shapes) without manual annotations. You can pass plain objects to `typedOQL(...)` too, but `defineSchema` is preferred.
+`defineSchema` is just an identity function with a `const` generic — it preserves literal types so TypeScript can infer everything (entity names, enum values, field shapes) without manual annotations. A plain object works too, but `defineSchema` is preferred.
 </Aside>
 
 ## Column types and modifiers
@@ -214,20 +214,39 @@ post: entity('posts', {
 
 ## Wiring up the runtime
 
-`typedOQL(oqlInstance, schema)` returns a typed `db` handle. The schema you pass is the same object you got from `defineSchema(...)`:
+`createPostgresDB(schema, connection)` returns a typed `db` handle. The schema you pass is the same object you got from `defineSchema(...)`, and it is the only data model — the factory generates the OQL `.dm` string from it and hands that to the backend.
 
 ```typescript
-import { typedOQL } from '@vinctus/oql-typed'
+import { createPostgresDB } from '@vinctus/oql-typed'
+import { schema } from './schema.js'
+
+export const db = createPostgresDB(schema, {
+  host, port, database, user, password,
+})
+```
+
+`db.post.id`, `db.post.author.email`, `db.post.select(...)`, etc. all become available with full type inference. Call `db.close()` on shutdown to release the connection pool.
+
+For tests, `createPetraDB(schema)` gives the same handle backed by the in-memory engine — install the optional `@vinctus/oql-petradb` peer to use it.
+
+```typescript
+import { createPetraDB } from '@vinctus/oql-typed'
+import { schema } from './schema.js'
+
+const db = createPetraDB(schema)
+```
+
+If you need to construct the OQL instance yourself — an unusual backend, a shared instance, custom pool wiring — `typedOQL(instance, schema)` is the escape hatch. You own the instance and its data model:
+
+```typescript
+import { typedOQL, generateDM } from '@vinctus/oql-typed'
 import { OQL_PG } from '@vinctus/oql-pg'
 import { schema } from './schema.js'
 
-// dm is the OQL data-model string (see the codegen guide for how to get it).
-const oqlInstance = new OQL_PG(dm, host, port, database, username, password)
+const instance = new OQL_PG(generateDM(schema), host, port, database, user, password, false, 7200000, 10)
 
-export const db = typedOQL(oqlInstance, schema)
+export const db = typedOQL(instance, schema)
 ```
-
-`db.post.id`, `db.post.author.email`, `db.post.select(...)`, etc. all become available with full type inference.
 
 ## The full blog schema
 
@@ -326,5 +345,5 @@ What's exercised here:
 - **Self-referencing `manyToOne`** (`comment.parent`).
 
 <Aside type="tip">
-Want to bootstrap this from an existing OQL `.dm` file instead of writing it by hand? See [DM codegen](/oql-typed/guides/codegen/).
+Already have an OQL `.dm` file? Convert it to a TypeScript schema once with [DM codegen](/oql-typed/guides/codegen/), then delete the `.dm` — the schema object generates it from then on.
 </Aside>

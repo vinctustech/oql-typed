@@ -145,3 +145,15 @@ Removes a single row by primary key. Returns `Promise<void>`.
 ### `db.<entity>.bulkDelete(ids)`
 
 Removes many rows by primary key. Returns `Promise<void>`.
+
+### `db.<entity>.bulkUpdate(updates)`
+
+Patches many rows from `[id, patch]` pairs. Every patch must set the same fields — only the values differ. Returns `Promise<void>`.
+
+### `db.<entity>.link(id, relation, targetId)`
+
+Adds one row to a `manyToMany` junction table. `relation` is restricted to the entity's `manyToMany` field names. Returns `Promise<void>`.
+
+### `db.<entity>.unlink(id, relation, targetId)`
+
+Removes one row from a `manyToMany` junction table. Returns `Promise<void>`.

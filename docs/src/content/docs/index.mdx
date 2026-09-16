@@ -27,9 +27,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components'
     `eq`, `ilike`, `inList`, `exists`, etc. validate field types at compile time. `eq(user.enabled, 'yes')` is a type error.
   </Card>
   <Card title="Schema as source of truth" icon="document">
-    Declare entities once. Derive TypeScript types, generate the OQL `.dm` data model, and share the schema across queries and mutations.
+    Declare entities once in TypeScript. The OQL `.dm` data model is generated from them, so there is no second copy to keep in sync.
   </Card>
-  <Card title="Backend-agnostic" icon="setting">
-    Works with `@vinctus/oql-pg` (PostgreSQL) and `@vinctus/oql-petradb` (in-memory). Peer dependency — no hard-coded backend.
+  <Card title="One dependency" icon="setting">
+    `createPostgresDB(schema, connection)` builds the PostgreSQL backend for you; `createPetraDB(schema)` runs the same schema in memory for tests.
   </Card>
 </CardGrid>

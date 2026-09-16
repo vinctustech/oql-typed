@@ -8,10 +8,13 @@ Compile-time typed queries for [OQL](https://github.com/vinctustech/oql). Define
 npm install @vinctus/oql-typed
 ```
 
-Requires one of the OQL backends as a peer dependency:
+That's everything for PostgreSQL — the driver comes along as a dependency, and the schema you declare in TypeScript is the only data model (no `.dm` file).
 
-- `@vinctus/oql-pg` — PostgreSQL backend
-- `@vinctus/oql-petradb` — In-memory backend (great for tests)
+For the in-memory backend used in tests, add the optional peer:
+
+```bash
+npm install --save-dev @vinctus/oql-petradb
+```
 
 ## Quick Start
 
@@ -60,20 +63,44 @@ export const schema = defineSchema({
 })
 ```
 
-### 2. Wrap your OQL instance
+### 2. Open the database
+
+`createPostgresDB` derives the OQL data model from the schema and builds the backend:
 
 ```typescript
-import { readFileSync } from 'node:fs'
-import { typedOQL } from '@vinctus/oql-typed'
-import { OQL_PG } from '@vinctus/oql-pg'
+import { createPostgresDB } from '@vinctus/oql-typed'
 import { schema } from './schema.js'
 
-// Keep your schema.dm alongside schema.ts. Use oql-typed-codegen to bootstrap
-// schema.ts from schema.dm; see the codegen guide.
-const dm = readFileSync(new URL('./schema.dm', import.meta.url), 'utf8')
-const oql = new OQL_PG(dm, host, port, database, username, password)
+export const db = createPostgresDB(schema, {
+  host,
+  port,
+  database,
+  user,
+  password,
+  // ssl: false, idleTimeoutMillis: 7200000, max: 10  ← defaults
+})
 
-export const db = typedOQL(oql, schema)
+// on shutdown
+db.close()
+```
+
+In tests, swap the factory and keep everything else:
+
+```typescript
+import { createPetraDB } from '@vinctus/oql-typed'
+import { schema } from './schema.js'
+
+const db = createPetraDB(schema)   // requires the optional @vinctus/oql-petradb peer
+```
+
+If you need to construct the OQL instance yourself, `typedOQL(instance, schema)` is the escape hatch, and `generateDM(schema)` gives you the data-model string it needs:
+
+```typescript
+import { typedOQL, generateDM } from '@vinctus/oql-typed'
+import { OQL_PG } from '@vinctus/oql-pg'
+
+const instance = new OQL_PG(generateDM(schema), host, port, database, user, password, false, 7200000, 10)
+export const db = typedOQL(instance, schema)
 ```
 
 ### 3. Write typed queries
@@ -234,7 +261,7 @@ db.trip.select('id', alias('priority', caseWhen(
 
 ## Mutations
 
-Mutations are methods on every entity handle — `db.<entity>.insert/update/delete/bulkDelete`:
+Mutations are methods on every entity handle — `db.<entity>.insert/update/delete/bulkDelete/bulkUpdate/link/unlink`:
 
 ```typescript
 // db.<entity>.insert(input) — typed input (required/optional fields), returns full row
@@ -261,6 +288,18 @@ await db.user.delete(userId)
 
 // db.<entity>.bulkDelete(ids) — remove many rows by primary key
 await db.user.bulkDelete([userId, otherUserId])
+
+// db.<entity>.bulkUpdate(updates) — patch many rows from [id, patch] pairs.
+// Every patch must set the same fields; only the values differ.
+await db.user.bulkUpdate([
+  [userId, { enabled: false }],
+  [otherUserId, { enabled: true }],
+])
+
+// db.<entity>.link/unlink(id, relation, targetId) — add or remove one row of a
+// manyToMany junction table. `relation` only accepts manyToMany field names.
+await db.user.link(userId, 'stores', storeId)
+await db.user.unlink(userId, 'stores', storeId)
 ```
 
 ## Conditional QueryBuilder
@@ -310,13 +349,15 @@ query(db, 'user')           // or just: db.user
 | `textArray()`, `integerArray()`, `decimal(p?, s?)` | Array & decimal columns |
 | `enumType<T>(name, values)` | Typed enum column |
 | `manyToOne(target, { column })` | FK relation (supports dotted paths) |
-| `oneToMany(target)` | Reverse FK (array) |
+| `oneToMany(target, { reference? })` | Reverse FK (array) |
 | `manyToMany(target, { junction })` | Junction-table relation (array) |
 | `oneToOne(target, { reference? })` | One-to-one |
 
 Column modifiers: `.primaryKey()`, `.nullable()`, `.column('db_alias')`
 
-## Bootstrapping from an existing `.dm` file
+## Migrating from an existing `.dm` file
+
+One-time conversion of a data-model file into a TypeScript schema:
 
 ```bash
 npx oql-typed-codegen schema.dm src/schema.generated.ts
@@ -330,6 +371,4 @@ import { parseDMAndGenerate } from '@vinctus/oql-typed'
 const tsSource = parseDMAndGenerate(dmString)
 ```
 
-The generated file uses `defineSchema(...)` and string-literal relation targets, identical to the hand-written form.
-
-> **Note:** The reverse direction — generating a `.dm` string from a TypeScript schema with `generateDM(...)` — is currently a stub that throws. It's being rebuilt for the schema-object API. Until then, treat the `.dm` file as the source of truth and run codegen to keep `schema.ts` in sync.
+The generated file uses `defineSchema(...)` and string-literal relation targets, identical to the hand-written form. Check it in, then retire the `.dm` file: the schema object is the source of truth from then on, and `generateDM(schema)` regenerates the model whenever the backend needs it.
