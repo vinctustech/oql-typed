@@ -17,6 +17,7 @@ import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
 import { alias, aliasedRelation, currentTimestamp, fn, ref, outer, subquery, caseWhen } from './expressions.js'
+import { defineSchema, entity, text, uuid } from './schema.js'
 import type { FieldRef, Prettify } from './types.js'
 
 import { schema, ID, type Role, type TripState } from './test-schema.js'
@@ -927,6 +928,91 @@ describe('type: mutation negatives', () => {
   async function _bulkDeleteWrongIdType() {
     // @ts-expect-error — bulkDelete takes an array of primary keys, not a single id
     await db.user.bulkDelete('x')
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// COLUMNS WITH DATABASE DEFAULTS
+// ═══════════════════════════════════════════════════════════════════
+
+const defaultOrderSchema = defineSchema({
+  widget: entity('widgets', {
+    id: uuid().primaryKey(),
+    name: text(),
+    defaultThenNullable: text().default().nullable(),
+    nullableThenDefault: text().nullable().default(),
+  }),
+})
+const defaultOrderDb = typedOQL(oql, defaultOrderSchema)
+
+describe('type: columns with database defaults', () => {
+  it('placeholder', () => assert.ok(true))
+
+  async function _insertOmittingEveryDefault() {
+    const r = await db.auditEntry.insert({ kind: 'created', store: ID.s1 })
+    // Reads are untouched: the defaulted columns are still non-null.
+    type _ = AssertTrue<
+      AssertEqual<
+        typeof r,
+        {
+          id: string
+          kind: string
+          detail: string
+          revision: number
+          recordedAt: Date
+          note: string | null
+        }
+      >
+    >
+  }
+
+  async function _insertSupplyingEveryDefault() {
+    await db.auditEntry.insert({
+      kind: 'created',
+      detail: 'seats changed',
+      revision: 2,
+      recordedAt: new Date(),
+      note: null,
+      store: ID.s1,
+    })
+  }
+
+  async function _insertStillNeedsColumnsWithoutDefaults() {
+    // @ts-expect-error — kind has no default, so it remains required
+    await db.auditEntry.insert({ store: ID.s1 })
+  }
+
+  async function _defaultDoesNotAdmitNull() {
+    // @ts-expect-error — detail is NOT NULL; a default only makes it omittable
+    await db.auditEntry.insert({ kind: 'created', detail: null, store: ID.s1 })
+  }
+
+  async function _updateIsUnchanged() {
+    // update patches columns individually and has always accepted null
+    await db.auditEntry.update('x', { detail: 'edited', revision: 3 })
+  }
+
+  // Field refs stay non-null for defaulted columns.
+  type D1 = AssertTrue<AssertEqual<typeof db.auditEntry.detail, FieldRef<string>>>
+  type D2 = AssertTrue<AssertEqual<typeof db.auditEntry.revision, FieldRef<number>>>
+  type D3 = AssertTrue<AssertEqual<typeof db.auditEntry.recordedAt, FieldRef<Date>>>
+  type D4 = AssertTrue<AssertEqual<typeof db.auditEntry.note, FieldRef<string | null>>>
+
+  // Nullability wins over the default marker whichever order they are chained.
+  type D5 = AssertTrue<
+    AssertEqual<typeof defaultOrderDb.widget.defaultThenNullable, FieldRef<string | null>>
+  >
+  type D6 = AssertTrue<
+    AssertEqual<typeof defaultOrderDb.widget.nullableThenDefault, FieldRef<string | null>>
+  >
+
+  async function _chainedBothWaysIsOptionalAndNullable() {
+    await defaultOrderDb.widget.insert({ name: 'a' })
+    await defaultOrderDb.widget.insert({
+      name: 'a',
+      defaultThenNullable: null,
+      nullableThenDefault: null,
+    })
   }
 })
 

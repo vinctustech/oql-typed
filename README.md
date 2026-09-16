@@ -34,6 +34,16 @@ const one = await db.user.findOneById(userId)
 // => { id, email, enabled } | undefined
 ```
 
+## Columns with database defaults
+
+Mark a `NOT NULL` column whose value the database supplies with `.default()`:
+
+```typescript
+createdAt: timestamp().column('created_at').default(),  // NOT NULL DEFAULT now()
+```
+
+The column may be omitted on insert, but it is never `null` on read — so there is no need to declare it `.nullable()` just to make inserts compile.
+
 See the [docs](https://vinctustech.github.io/oql-typed/) for the full guide — schema, queries, operators, expressions, mutations, transactions, and the conditional QueryBuilder.
 
 ## Repository layout

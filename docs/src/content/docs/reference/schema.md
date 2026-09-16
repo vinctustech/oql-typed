@@ -53,7 +53,10 @@ The entity name itself comes from the `defineSchema` key, not from `entity(...)`
 |----------|--------|
 | `.primaryKey()` | Marks the column as the primary key. |
 | `.nullable()` | Allows `null`; the inferred type becomes `T \| null`. |
+| `.default()` | The database supplies the value when an insert omits the column. |
 | `.column('alias')` | Overrides the database column name. |
+
+`.default()` is for `NOT NULL` columns that carry a database default (`DEFAULT ''`, `DEFAULT 0`, `DEFAULT now()`). It makes the column optional in `InsertInput` without adding `| null`, so reads stay non-null and passing `null` remains a type error. No default value is stored in the schema.
 
 ## Relations
 

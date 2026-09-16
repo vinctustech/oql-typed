@@ -35,36 +35,46 @@ export type RelationKind = 'manyToOne' | 'oneToMany' | 'manyToMany' | 'oneToOne'
 // Column builder
 // ══════════════════════════════════════════════════════════════════════
 
-export class Column<T = unknown, Nullable extends boolean = false, PK extends boolean = false> {
+export interface ColumnOptions {
+  nullable?: boolean
+  primaryKey?: boolean
+  // The database supplies a value when the insert omits the column. No value is
+  // stored here — the marker only says the column may be left out on insert.
+  hasDefault?: boolean
+  columnAlias?: string
+  enumName?: string
+  enumValues?: readonly string[]
+  precision?: number
+  scale?: number
+}
+
+export class Column<
+  T = unknown,
+  Nullable extends boolean = false,
+  PK extends boolean = false,
+  HasDefault extends boolean = false,
+> {
   declare readonly _type: T
   declare readonly _nullable: Nullable
   declare readonly _pk: PK
+  declare readonly _hasDefault: HasDefault
 
   readonly __kind = 'column' as const
   readonly columnKind: ColumnKind
   readonly isNullable: boolean
   readonly isPrimaryKey: boolean
+  readonly hasDefault: boolean
   readonly columnAlias: string | undefined
   readonly enumName: string | undefined
   readonly enumValues: readonly string[] | undefined
   readonly precision: number | undefined
   readonly scale: number | undefined
 
-  constructor(
-    columnKind: ColumnKind,
-    opts: {
-      nullable?: boolean
-      primaryKey?: boolean
-      columnAlias?: string
-      enumName?: string
-      enumValues?: readonly string[]
-      precision?: number
-      scale?: number
-    } = {},
-  ) {
+  constructor(columnKind: ColumnKind, opts: ColumnOptions = {}) {
     this.columnKind = columnKind
     this.isNullable = opts.nullable ?? false
     this.isPrimaryKey = opts.primaryKey ?? false
+    this.hasDefault = opts.hasDefault ?? false
     this.columnAlias = opts.columnAlias
     this.enumName = opts.enumName
     this.enumValues = opts.enumValues
@@ -72,40 +82,49 @@ export class Column<T = unknown, Nullable extends boolean = false, PK extends bo
     this.scale = opts.scale
   }
 
-  primaryKey(): Column<T, Nullable, true> {
+  primaryKey(): Column<T, Nullable, true, HasDefault> {
     return new Column(this.columnKind, {
-      nullable: this.isNullable,
+      ...currentOptions(this),
       primaryKey: true,
-      columnAlias: this.columnAlias,
-      enumName: this.enumName,
-      enumValues: this.enumValues,
-      precision: this.precision,
-      scale: this.scale,
-    }) as Column<T, Nullable, true>
+    }) as Column<T, Nullable, true, HasDefault>
   }
 
-  nullable(): Column<T | null, true, PK> {
+  nullable(): Column<T | null, true, PK, HasDefault> {
     return new Column(this.columnKind, {
+      ...currentOptions(this),
       nullable: true,
-      primaryKey: this.isPrimaryKey,
-      columnAlias: this.columnAlias,
-      enumName: this.enumName,
-      enumValues: this.enumValues,
-      precision: this.precision,
-      scale: this.scale,
-    }) as Column<T | null, true, PK>
+    }) as Column<T | null, true, PK, HasDefault>
   }
 
-  column(alias: string): Column<T, Nullable, PK> {
+  default(): Column<T, Nullable, PK, true> {
     return new Column(this.columnKind, {
-      nullable: this.isNullable,
-      primaryKey: this.isPrimaryKey,
+      ...currentOptions(this),
+      hasDefault: true,
+    }) as Column<T, Nullable, PK, true>
+  }
+
+  column(alias: string): Column<T, Nullable, PK, HasDefault> {
+    return new Column(this.columnKind, {
+      ...currentOptions(this),
       columnAlias: alias,
-      enumName: this.enumName,
-      enumValues: this.enumValues,
-      precision: this.precision,
-      scale: this.scale,
-    }) as Column<T, Nullable, PK>
+    }) as Column<T, Nullable, PK, HasDefault>
+  }
+}
+
+// Every modifier copies the whole option set, so chaining in any order keeps
+// the settings made before it. A module function rather than a private method:
+// a private member would make Column nominally typed, and two copies of the
+// package in one dependency tree would stop matching each other.
+function currentOptions(column: Column<any, any, any, any>): ColumnOptions {
+  return {
+    nullable: column.isNullable,
+    primaryKey: column.isPrimaryKey,
+    hasDefault: column.hasDefault,
+    columnAlias: column.columnAlias,
+    enumName: column.enumName,
+    enumValues: column.enumValues,
+    precision: column.precision,
+    scale: column.scale,
   }
 }
 
@@ -211,7 +230,7 @@ export function oneToOne<Target extends string>(
 // Schema + entity metadata
 // ══════════════════════════════════════════════════════════════════════
 
-export type FieldDef = Column<any, any, any> | Relation<any, any, any>
+export type FieldDef = Column<any, any, any, any> | Relation<any, any, any>
 export type EntityDef = { readonly [fieldName: string]: FieldDef }
 export type SchemaDef = { readonly [entityName: string]: EntityDef }
 

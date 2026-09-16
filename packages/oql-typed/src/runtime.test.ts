@@ -1290,6 +1290,62 @@ describe('runtime: mutations', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
+// Columns with database defaults
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: columns with database defaults', () => {
+  const omittedId = '40000000-0000-4000-8000-000000000001'
+  const suppliedId = '40000000-0000-4000-8000-000000000002'
+
+  it('insert omitting a defaulted NOT NULL column is accepted', async () => {
+    await db.auditEntry.insert({ id: omittedId, kind: 'created', store: ID.s1 })
+  })
+
+  it('the database fills each omitted column in', async () => {
+    const r = await db.auditEntry
+      .select('detail', 'revision', 'recordedAt', 'note')
+      .where(eq(db.auditEntry.id, omittedId))
+      .one()
+    assert.ok(r)
+    assert.equal(r.detail, '')
+    assert.equal(r.revision, 0)
+    assert.deepStrictEqual(r.recordedAt, new Date('2024-01-01T00:00:00Z'))
+    assert.equal(r.note, 'none')
+  })
+
+  it('a supplied value still wins over the default', async () => {
+    await db.auditEntry.insert({
+      id: suppliedId,
+      kind: 'updated',
+      detail: 'seats changed',
+      revision: 7,
+      recordedAt: new Date('2024-08-01T00:00:00Z'),
+      note: null,
+      store: ID.s1,
+    })
+    const r = await db.auditEntry
+      .select('detail', 'revision', 'recordedAt', 'note')
+      .where(eq(db.auditEntry.id, suppliedId))
+      .one()
+    assert.ok(r)
+    assert.equal(r.detail, 'seats changed')
+    assert.equal(r.revision, 7)
+    assert.deepStrictEqual(r.recordedAt, new Date('2024-08-01T00:00:00Z'))
+    assert.equal(r.note, null)
+  })
+
+  it('a column without a default is still rejected when omitted', async () => {
+    // The cast is the point: TypeScript blocks this call, and the data model
+    // still marks kind required so OQL refuses it too.
+    const untyped = db.auditEntry as unknown as { insert(data: Record<string, unknown>): Promise<unknown> }
+    await assert.rejects(
+      async () => await untyped.insert({ store: ID.s1 }),
+      /missing required properties/,
+    )
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
 // close() — releases whatever the backend holds; petradb holds nothing
 // ═══════════════════════════════════════════════════════════════════
 

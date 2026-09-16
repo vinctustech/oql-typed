@@ -22,7 +22,7 @@ function resolveEntry(entry: SchemaEntry): ResolvedEntity {
   return { tableName: undefined, definition: entry as EntityDef }
 }
 
-function columnTypeName(column: Column<any, any, any>): string {
+function columnTypeName(column: Column<any, any, any, any>): string {
   switch (column.columnKind) {
     case 'boolean':
       return 'bool'
@@ -37,10 +37,14 @@ function columnTypeName(column: Column<any, any, any>): string {
   }
 }
 
-function columnLine(fieldName: string, column: Column<any, any, any>): string {
+function columnLine(fieldName: string, column: Column<any, any, any, any>): string {
   const primaryKey = column.isPrimaryKey ? '*' : ' '
   const alias = column.columnAlias ? ` (${column.columnAlias})` : ''
-  const required = !column.isNullable && !column.isPrimaryKey ? '!' : ''
+  // A defaulted column is left unmarked: OQL refuses any insert that omits a
+  // `!` attribute, and the data model has no way to say "the database fills
+  // this in". Reads are unaffected — `!` only drives insert validation and the
+  // DDL the backends can generate.
+  const required = !column.isNullable && !column.isPrimaryKey && !column.hasDefault ? '!' : ''
   return `  ${primaryKey}${fieldName}${alias}: ${columnTypeName(column)}${required}`
 }
 

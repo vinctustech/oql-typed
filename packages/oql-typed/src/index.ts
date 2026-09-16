@@ -27,7 +27,7 @@ export {
   Relation,
 } from './schema.js'
 
-export type { ColumnKind, RelationKind, EntityDef, EntityMeta, SchemaDef, SchemaEntry, FieldDef, Unwrap } from './schema.js'
+export type { ColumnKind, ColumnOptions, RelationKind, EntityDef, EntityMeta, SchemaDef, SchemaEntry, FieldDef, Unwrap } from './schema.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Type plumbing

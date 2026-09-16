@@ -98,7 +98,7 @@ function getEntityDef(schema: Schema, entityName: string): Record<string, any> {
 function createFieldRef(
   entityName: string,
   fieldName: string,
-  builder: Column<any, any, any>,
+  builder: Column<any, any, any, any>,
   rootEntityName: string,
 ) {
   return {

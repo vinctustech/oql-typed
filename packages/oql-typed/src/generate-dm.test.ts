@@ -203,6 +203,43 @@ describe('generateDM: relations', () => {
   })
 })
 
+describe('generateDM: columns with database defaults', () => {
+  it('leaves a defaulted column unmarked so OQL accepts an insert that omits it', () => {
+    const dm = generateDM(
+      defineSchema({
+        widget: entity({
+          id: uuid().primaryKey(),
+          name: text(),
+          detail: text().default(),
+          revision: integer().default(),
+          label: text().column('display_label').default(),
+          note: text().nullable().default(),
+        }),
+      }),
+    )
+    assert.deepStrictEqual(entityBody(dm, 'widget'), [
+      '  *id: uuid',
+      '   name: text!',
+      '   detail: text',
+      '   revision: integer',
+      '   label (display_label): text',
+      '   note: text',
+    ])
+  })
+
+  it('renders the defaulted columns of the test schema', () => {
+    assert.deepStrictEqual(entityBody(generateDM(schema), 'auditEntry'), [
+      '  *id: uuid',
+      '   kind: text!',
+      '   detail: text',
+      '   revision: integer',
+      '   recordedAt (recorded_at): timestamp',
+      '   note: text',
+      '  store (store_id): store!',
+    ])
+  })
+})
+
 describe('generateDM: entities', () => {
   it('names the table when the schema gives one, and omits it otherwise', () => {
     const dm = generateDM(

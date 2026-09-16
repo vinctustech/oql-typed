@@ -25,7 +25,7 @@ export interface FieldRef<T = unknown> {
   readonly _type: T
   readonly entityName: string
   readonly fieldName: string
-  readonly builder: Column<any, any, any>
+  readonly builder: Column<any, any, any, any>
 }
 
 export interface RelationFieldRef<S extends Schema = Schema, Target extends keyof S = keyof S, Kind extends RelationKind = RelationKind> {
@@ -62,7 +62,7 @@ type OrBool<A extends boolean, B extends boolean> = A extends true
 // through nested manyToOne hops. Non-manyToOne relations stop the chain (OQL
 // does not surface `.field` access on oneToMany/manyToMany collections).
 type ChainedFieldRefsFor<S extends Schema, Name extends keyof S, ParentNullable extends boolean> = {
-  readonly [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, infer N, any>
+  readonly [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, infer N, any, any>
     ? FieldRef<
         ParentNullable extends true ? T | null : N extends true ? T | null : T
       >
@@ -80,7 +80,7 @@ type ChainedFieldRefsFor<S extends Schema, Name extends keyof S, ParentNullable 
 // ══════════════════════════════════════════════════════════════════════
 
 export type ScalarKeys<D> = {
-  [K in keyof D]: D[K] extends Column<any, any, any> ? K : never
+  [K in keyof D]: D[K] extends Column<any, any, any, any> ? K : never
 }[keyof D]
 
 export type RelationKeys<D> = {
@@ -88,12 +88,12 @@ export type RelationKeys<D> = {
 }[keyof D]
 
 export type NonPKScalarKeys<D> = {
-  [K in keyof D]: D[K] extends Column<any, any, infer PK> ? (PK extends true ? never : K) : never
+  [K in keyof D]: D[K] extends Column<any, any, infer PK, any> ? (PK extends true ? never : K) : never
 }[keyof D]
 
 // Type of the primary-key column for an entity (assumes single-column PK).
 export type PKType<S extends Schema, Name extends keyof S> = {
-  [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, any, infer PK>
+  [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, any, infer PK, any>
     ? PK extends true ? T : never
     : never
 }[keyof Unwrap<S[Name]>]
@@ -103,7 +103,7 @@ export type PKType<S extends Schema, Name extends keyof S> = {
 // ══════════════════════════════════════════════════════════════════════
 
 export type FieldRefsFor<S extends Schema, Name extends keyof S> = {
-  readonly [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, infer N, any>
+  readonly [K in keyof Unwrap<S[Name]>]: Unwrap<S[Name]>[K] extends Column<infer T, infer N, any, any>
     ? FieldRef<N extends true ? T | null : T>
     : Unwrap<S[Name]>[K] extends Relation<infer Target, infer Kind, infer Nullable>
       ? Target extends keyof S
@@ -118,11 +118,11 @@ export type FieldRefsFor<S extends Schema, Name extends keyof S> = {
 // Column type inference
 // ══════════════════════════════════════════════════════════════════════
 
-export type InferColumnType<C> = C extends Column<infer T, any, any> ? T : never
+export type InferColumnType<C> = C extends Column<infer T, any, any, any> ? T : never
 
 // All scalar fields of an entity, respecting nullability
 export type InferAllScalars<D> = Prettify<{
-  [K in ScalarKeys<D>]: D[K] extends Column<infer T, infer N, any>
+  [K in ScalarKeys<D>]: D[K] extends Column<infer T, infer N, any, any>
     ? N extends true ? T | null : T
     : never
 }>

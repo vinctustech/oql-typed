@@ -13,8 +13,13 @@ The input is typed:
 
 - Non-nullable columns with no default → **required**
 - Nullable columns → **optional** (omit to insert `NULL`)
+- Columns marked [`.default()`](/oql-typed/guides/schema/#columns-with-database-defaults) → **optional**, but the value type stays non-null
 - `manyToOne` relations → accept the FK id directly
 - Primary key is optional — OQL auto-generates if omitted; pass one explicitly to override
+
+<Aside type="note">
+A `.default()` column is omittable because the database fills it in, not because it accepts `NULL` — passing `null` for one is a type error. `update()` is unaffected: every field in a patch is optional there already.
+</Aside>
 
 <Tabs syncKey="insert">
   <TabItem label="TypeScript">

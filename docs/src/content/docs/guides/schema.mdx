@@ -75,6 +75,7 @@ user: entity('users', {
   firstName:   text().column('first_name'),                     // renames column
   email:       text(),
   lastLoginAt: timestamp().column('last_login_at').nullable(),  // nullable + rename
+  createdAt:   timestamp().column('created_at').default(),      // NOT NULL DEFAULT now()
 })
 ```
 
@@ -82,10 +83,33 @@ user: entity('users', {
 |----------|--------|
 | `.primaryKey()` | Marks this column as the primary key. |
 | `.nullable()` | Adds `\| null` to the inferred type; the column is allowed to be `NULL`. |
+| `.default()` | The database supplies a value when the insert omits the column. |
 | `.column('alias')` | Uses a different database column name than the TypeScript field name. |
 
 <Aside type="note">
 `.nullable()` changes both the TypeScript type and the underlying DM definition. Mismatching nullability between your schema and the database is one of the most common bugs typed queries catch.
+</Aside>
+
+### Columns with database defaults
+
+A column declared `NOT NULL DEFAULT ''` (or `DEFAULT 0`, `DEFAULT now()`) is never `null`, yet you should not have to pass it on every insert. `.default()` says exactly that: the column becomes **optional on insert** while its inferred type stays non-null on read. No default value is stored in the schema — the database owns it.
+
+```typescript
+post: entity('posts', {
+  id:        uuid().primaryKey(),
+  title:     text(),
+  slug:      text().default(),                             // NOT NULL DEFAULT ''
+  createdAt: timestamp().column('created_at').default(),   // NOT NULL DEFAULT now()
+})
+
+await db.post.insert({ title: 'Hello' })       // slug and createdAt omitted
+const row = await db.post.findOneById(postId)
+// row.slug      => string   (not string | null)
+// row.createdAt => Date     (not Date | null)
+```
+
+<Aside type="caution">
+`.default()` does not make a column nullable — passing `null` for one is still a type error. Chain both (`.nullable().default()`) for a column that is nullable *and* defaulted.
 </Aside>
 
 ## Enums

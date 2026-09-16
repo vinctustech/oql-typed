@@ -129,6 +129,17 @@ export const schema = defineSchema({
     sectors: integerArray(),
     store: manyToOne('store', { column: 'store_id' }),
   }),
+  // Exercises .default(): every marked column is NOT NULL with a database
+  // default, so it is optional on insert yet never null on read.
+  auditEntry: entity('audit_entries', {
+    id: uuid().primaryKey(),
+    kind: text(),
+    detail: text().default(),
+    revision: integer().default(),
+    recordedAt: timestamp().column('recorded_at').default(),
+    note: text().nullable().default(),
+    store: manyToOne('store', { column: 'store_id' }),
+  }),
 })
 
 export type AppSchema = typeof schema
@@ -227,6 +238,15 @@ CREATE TABLE trip_steps (
   finished_at TIMESTAMP,
   trip_id UUID REFERENCES trips(id),
   place_id UUID REFERENCES places(id)
+);
+CREATE TABLE audit_entries (
+  id UUID PRIMARY KEY,
+  kind TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 0,
+  recorded_at TIMESTAMP NOT NULL DEFAULT '2024-01-01 00:00:00',
+  note TEXT DEFAULT 'none',
+  store_id UUID REFERENCES stores(id)
 );
 `
 

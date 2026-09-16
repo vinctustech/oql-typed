@@ -7,11 +7,11 @@ import type { OQLInstance } from './db.js'
 // ══════════════════════════════════════════════════════════════════════
 
 type InsertableScalarKeys<D> = {
-  [K in keyof D]: D[K] extends Column<any, any, infer PK> ? (PK extends true ? never : K) : never
+  [K in keyof D]: D[K] extends Column<any, any, infer PK, any> ? (PK extends true ? never : K) : never
 }[keyof D]
 
 type PKKeys<D> = {
-  [K in keyof D]: D[K] extends Column<any, any, infer PK> ? (PK extends true ? K : never) : never
+  [K in keyof D]: D[K] extends Column<any, any, infer PK, any> ? (PK extends true ? K : never) : never
 }[keyof D]
 
 type ManyToOneKeys<D> = {
@@ -29,15 +29,24 @@ type ManyToManyKeys<D> = Extract<
   string
 >
 
+// A nullable column is optional and accepts null; a NOT NULL column carrying a
+// database default is optional but still rejects null; anything else is
+// required. Nullability wins when a column is marked both ways.
 type RequiredScalarKeys<D> = {
-  [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any>
-    ? N extends true ? never : K
+  [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any, infer HasDefault>
+    ? N extends true ? never : HasDefault extends true ? never : K
     : never
 }[InsertableScalarKeys<D>]
 
 type OptionalScalarKeys<D> = {
-  [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any>
+  [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any, any>
     ? N extends true ? K : never
+    : never
+}[InsertableScalarKeys<D>]
+
+type DefaultedScalarKeys<D> = {
+  [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any, infer HasDefault>
+    ? N extends true ? never : HasDefault extends true ? K : never
     : never
 }[InsertableScalarKeys<D>]
 
@@ -53,12 +62,16 @@ type OptionalFKKeys<D> = {
     : never
 }[ManyToOneKeys<D>]
 
-type ScalarValue<C> = C extends Column<infer T, any, any> ? T : never
+type ScalarValue<C> = C extends Column<infer T, any, any, any> ? T : never
 
 export type InsertInput<S extends Schema, Name extends keyof S> = {
   [K in RequiredScalarKeys<Unwrap<S[Name]>>]: ScalarValue<Unwrap<S[Name]>[K]>
 } & {
   [K in OptionalScalarKeys<Unwrap<S[Name]>>]?: ScalarValue<Unwrap<S[Name]>[K]> | null
+} & {
+  // Omit and the database fills it in; the column is still NOT NULL, so null
+  // is not a legal value for it.
+  [K in DefaultedScalarKeys<Unwrap<S[Name]>>]?: ScalarValue<Unwrap<S[Name]>[K]>
 } & {
   [K in RequiredFKKeys<Unwrap<S[Name]>>]: string
 } & {
