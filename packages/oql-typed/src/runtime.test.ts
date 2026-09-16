@@ -7,22 +7,20 @@
  */
 import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
-import { OQL_PETRADB } from '@vinctus/oql-petradb'
-
+import { createPetraDB } from './backends.js'
 import { typedOQL } from './db.js'
-import type { OQLInstance } from './db.js'
+import type { DB, OQLInstance } from './db.js'
 import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
 import { fn, ref, outer, alias, aliasedRelation, currentTimestamp, subquery, caseWhen } from './expressions.js'
 import { count, sum, avg, min, max, concatOp } from './functions.js'
 
-import { schema, schemaToDM, seedSQL, dataSQL, ID } from './test-schema.js'
+import { schema, seedDatabase, ID } from './test-schema.js'
 
 // ═══════════════════════════════════════════════════════════════════
 
-let oql: OQL_PETRADB
-let db: ReturnType<typeof typedOQL<typeof schema>>
+let db: DB<typeof schema>
 
 // Run the whole behavioral suite under either engine. OQL_TYPED_ENGINE=string
 // exercises the string-builder fallback with the same assertions (see the
@@ -30,10 +28,8 @@ let db: ReturnType<typeof typedOQL<typeof schema>>
 const engine = (process.env.OQL_TYPED_ENGINE as 'ast' | 'string' | undefined) ?? 'ast'
 
 before(async () => {
-  const dm = schemaToDM(schema)
-  oql = new OQL_PETRADB(dm)
-  db = typedOQL(oql, schema, { engine })
-  await oql.rawMulti(seedSQL + dataSQL)
+  db = createPetraDB(schema, { engine })
+  await seedDatabase(db)
 })
 
 // ═══════════════════════════════════════════════════════════════════

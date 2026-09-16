@@ -200,6 +200,10 @@ describe('codegen: end-to-end compilation', () => {
           noEmit: true,
           baseUrl: repoRoot,
           paths: { '@vinctus/oql-typed': ['src/index.ts'] },
+          // The library is compiled from source here, and its backend
+          // factories reach for node:module.
+          typeRoots: [join(repoRoot, 'node_modules', '@types')],
+          types: ['node'],
         },
         include: [file],
       }

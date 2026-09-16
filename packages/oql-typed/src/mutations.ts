@@ -20,6 +20,15 @@ type ManyToOneKeys<D> = {
     : never
 }[keyof D]
 
+type ManyToManyKeys<D> = Extract<
+  {
+    [K in keyof D]: D[K] extends Relation<any, infer Kind, any>
+      ? Kind extends 'manyToMany' ? K : never
+      : never
+  }[keyof D],
+  string
+>
+
 type RequiredScalarKeys<D> = {
   [K in InsertableScalarKeys<D>]: D[K] extends Column<any, infer N, any>
     ? N extends true ? never : K
@@ -67,10 +76,13 @@ export type UpdateInput<S extends Schema, Name extends keyof S> = {
 
 // ══════════════════════════════════════════════════════════════════════
 // Mutation methods, mixed onto every entity handle (db.user, db.trip, …):
-//   db.user.insert(data)      — returns the inserted row with all scalars
-//   db.user.update(id, patch) — returns the primary key + patched fields
-//   db.user.delete(id)        — removes one row by primary key
-//   db.user.bulkDelete(ids)   — removes many rows by primary key
+//   db.user.insert(data)              — returns the inserted row with all scalars
+//   db.user.update(id, patch)         — returns the primary key + patched fields
+//   db.user.delete(id)                — removes one row by primary key
+//   db.user.bulkDelete(ids)           — removes many rows by primary key
+//   db.user.bulkUpdate(updates)       — patches many rows, one [id, patch] each
+//   db.user.link(id, rel, targetId)   — adds a manyToMany junction row
+//   db.user.unlink(id, rel, targetId) — removes a manyToMany junction row
 // ══════════════════════════════════════════════════════════════════════
 
 export interface MutationMethods<S extends Schema, Name extends keyof S> {
@@ -78,6 +90,17 @@ export interface MutationMethods<S extends Schema, Name extends keyof S> {
   update(id: string | number, data: UpdateInput<S, Name>): Promise<Partial<InferAllScalars<Unwrap<S[Name]>>>>
   delete(id: string | number): Promise<void>
   bulkDelete(ids: (string | number)[]): Promise<void>
+  bulkUpdate(updates: [string | number, UpdateInput<S, Name>][]): Promise<void>
+  link(
+    id: string | number,
+    relation: ManyToManyKeys<Unwrap<S[Name]>>,
+    targetId: string | number,
+  ): Promise<void>
+  unlink(
+    id: string | number,
+    relation: ManyToManyKeys<Unwrap<S[Name]>>,
+    targetId: string | number,
+  ): Promise<void>
 }
 
 // Runtime factory — untyped bodies; the types come from MutationMethods on the
@@ -89,5 +112,11 @@ export function createMutationMethods(oql: OQLInstance, entityName: string): Rec
     update: (id: unknown, data: Record<string, unknown>) => oql.entity(entityName).update(id, data),
     delete: (id: unknown) => oql.entity(entityName).delete(id),
     bulkDelete: (ids: unknown[]) => oql.entity(entityName).bulkDelete(ids),
+    bulkUpdate: (updates: [unknown, Record<string, unknown>][]) =>
+      oql.entity(entityName).bulkUpdate(updates),
+    link: (id: unknown, relation: string, targetId: unknown) =>
+      oql.entity(entityName).link(id, relation, targetId),
+    unlink: (id: unknown, relation: string, targetId: unknown) =>
+      oql.entity(entityName).unlink(id, relation, targetId),
   }
 }

@@ -49,10 +49,18 @@ export type {
 } from './types.js'
 
 // ══════════════════════════════════════════════════════════════════════
-// DB / typedOQL
+// DB — createPostgresDB/createPetraDB build the backend from the schema;
+// typedOQL wraps an OQL instance you constructed yourself.
 // ══════════════════════════════════════════════════════════════════════
+export { createPostgresDB, createPetraDB } from './backends.js'
+export type { PostgresConnection, PostgresOptions, PetraOptions, PetraStorage } from './backends.js'
 export { typedOQL } from './db.js'
-export type { DB, EntityHandle, OQLInstance } from './db.js'
+export type { DB, EntityHandle, OQLInstance, Engine } from './db.js'
+
+// ══════════════════════════════════════════════════════════════════════
+// Data model generation — the `.dm` string the backends are built from
+// ══════════════════════════════════════════════════════════════════════
+export { generateDM } from './generate-dm.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Query

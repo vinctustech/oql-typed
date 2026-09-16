@@ -108,7 +108,7 @@ type ParsedFieldType =
   | { kind: 'primitive'; typeName: string; precision?: number; scale?: number }
   | { kind: 'enum'; enumName: string }
   | { kind: 'manyToOne'; target: string }
-  | { kind: 'oneToMany'; target: string }
+  | { kind: 'oneToMany'; target: string; reference?: string }
   | { kind: 'manyToMany'; target: string; junction: string }
   | { kind: 'oneToOne'; target: string; reference?: string }
 
@@ -224,11 +224,12 @@ class Parser {
         this.expect(')')
         return { kind: 'manyToMany', target, junction }
       }
+      let reference: string | undefined
       if (this.peek().type === '.') {
         this.advance()
-        this.expect('ident') // reverse reference — consumed but unused
+        reference = this.expect('ident').value
       }
-      return { kind: 'oneToMany', target }
+      return { kind: 'oneToMany', target, reference }
     }
     const typeName = this.expect('ident').value
     if (typeName === 'decimal' && this.peek().type === '(') {
@@ -428,9 +429,11 @@ function generateFieldLine(
       }
       break
     }
-    case 'oneToMany':
-      expr = `oneToMany('${t.target}')`
+    case 'oneToMany': {
+      const ref = t.reference ? `, { reference: '${t.reference}' }` : ''
+      expr = `oneToMany('${t.target}'${ref})`
       break
+    }
     case 'manyToMany':
       expr = `manyToMany('${t.target}', { junction: '${t.junction}' })`
       break

@@ -22,10 +22,15 @@ export interface OQLInstance {
     update<T = any>(id: unknown, data: Record<string, unknown>): Promise<T>
     delete(id: unknown): Promise<void>
     bulkDelete(ids: unknown[]): Promise<void>
+    link(id1: unknown, resource: string, id2: unknown): Promise<void>
+    unlink(id1: unknown, resource: string, id2: unknown): Promise<void>
+    bulkUpdate(updates: [unknown, Record<string, unknown>][]): Promise<void>
   }
   // Optional because only the PostgreSQL backend implements transactions
   transaction?<T>(body: (tx: OQLInstance) => Promise<T>): Promise<T>
   raw?<T = any>(sql: string, values?: unknown[]): Promise<T[]>
+  // Optional because only the PostgreSQL backend holds a connection pool
+  close?(): void
 }
 
 // Which engine the query terminals use. 'ast' (default) builds a plain-object
@@ -42,7 +47,8 @@ export type Engine = 'ast' | 'string'
 // `db.user.insert(...)` → Promise<row>                (mutation method)
 // Column/relation names can't conflict with starter method names (select, where,
 // orderBy, limit, offset, one, many, count, toOQL, query, queryBuilder) or with
-// mutation method names (insert, update, delete, bulkDelete).
+// mutation method names (insert, update, delete, bulkDelete, link, unlink,
+// bulkUpdate).
 export type EntityHandle<S extends Schema, Name extends keyof S> = {
   readonly __entityName: Name
   readonly __schema: S
@@ -50,8 +56,8 @@ export type EntityHandle<S extends Schema, Name extends keyof S> = {
 
 // `transaction` runs a group of writes so that they all apply or none do; the
 // body gets a DB bound to the transaction's connection. An entity named
-// `transaction` takes precedence over the method, the same way entity fields
-// take precedence over query-starter methods.
+// `transaction`, `raw` or `close` takes precedence over the method, the same
+// way entity fields take precedence over query-starter methods.
 export type DB<S extends Schema> = {
   readonly __oql: OQLInstance
   readonly __schema: S
@@ -61,6 +67,9 @@ export type DB<S extends Schema> = {
   // locking, most of all. Inside a transaction it runs on that transaction's
   // connection, which is the only way a `SELECT … FOR UPDATE` actually holds.
   raw<T = any>(sql: string, values?: unknown[]): Promise<T[]>
+  // Releases the backend's resources — the PostgreSQL connection pool, above
+  // all. Backends that hold nothing open make this a no-op.
+  close(): void
 } & {
   readonly [Name in keyof S]: EntityHandle<S, Name>
 }
@@ -205,6 +214,9 @@ export function typedOQL<S extends Schema>(
     raw: <T>(sql: string, values?: unknown[]): Promise<T[]> => {
       if (!oql.raw) throw new Error('oql-typed: this OQL backend does not support raw SQL')
       return oql.raw<T>(sql, values)
+    },
+    close: (): void => {
+      oql.close?.()
     },
   }
   for (const entityName of Object.keys(schema)) {

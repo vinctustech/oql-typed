@@ -186,8 +186,11 @@ export function manyToOne<Target extends string>(
   return new Relation(target, 'manyToOne', opts)
 }
 
-export function oneToMany<Target extends string>(target: Target): Relation<Target, 'oneToMany', false> {
-  return new Relation(target, 'oneToMany')
+export function oneToMany<Target extends string>(
+  target: Target,
+  opts?: { reference?: string },
+): Relation<Target, 'oneToMany', false> {
+  return new Relation(target, 'oneToMany', opts)
 }
 
 export function manyToMany<Target extends string>(

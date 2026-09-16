@@ -24,6 +24,9 @@ const stub: OQLInstance = {
     update: () => Promise.resolve({}) as any,
     delete: () => Promise.resolve(),
     bulkDelete: () => Promise.resolve(),
+    bulkUpdate: () => Promise.resolve(),
+    link: () => Promise.resolve(),
+    unlink: () => Promise.resolve(),
   }),
 }
 const db = typedOQL(stub, schema)

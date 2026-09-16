@@ -18,7 +18,7 @@ import {
   textArray,
   integerArray,
 } from './schema.js'
-import type { EntityMeta, Column, Relation } from './schema.js'
+import type { OQLInstance } from './db.js'
 
 export type Role = 'ADMIN' | 'DISPATCHER' | 'DRIVER'
 export type TripState = 'REQUESTED' | 'CONFIRMED' | 'EN_ROUTE' | 'COMPLETED' | 'CANCELLED'
@@ -132,104 +132,6 @@ export const schema = defineSchema({
 })
 
 export type AppSchema = typeof schema
-
-// ═══════════════════════════════════════════════════════════════════
-// Generate a .dm string from this schema for petradb's DataModel constructor.
-// This is a bit ugly — we'll replace it with a proper generator later.
-// ═══════════════════════════════════════════════════════════════════
-
-export function schemaToDM(s: typeof schema): string {
-  const parts: string[] = []
-
-  // Collect enum definitions
-  const enums = new Map<string, readonly string[]>()
-  for (const [, entry] of Object.entries(s)) {
-    const def = (entry as EntityMeta).definition
-    for (const [, field] of Object.entries(def)) {
-      if (field instanceof Object && (field as any).__kind === 'column') {
-        const col = field as Column
-        if (col.enumName && col.enumValues) enums.set(col.enumName, col.enumValues)
-      }
-    }
-  }
-
-  for (const [name, values] of enums) {
-    parts.push(`enum ${name} { ${values.join(' ')} }`)
-  }
-
-  for (const [entityName, entry] of Object.entries(s)) {
-    const meta = entry as EntityMeta
-    const tableName = meta.tableName
-    const header = tableName ? `entity ${entityName} (${tableName})` : `entity ${entityName}`
-    const lines: string[] = []
-
-    for (const [fieldName, field] of Object.entries(meta.definition)) {
-      if ((field as any).__kind === 'column') {
-        const col = field as Column
-        const pk = col.isPrimaryKey ? '*' : ' '
-        const alias = col.columnAlias ? ` (${col.columnAlias})` : ''
-        const req = !col.isNullable && !col.isPrimaryKey ? '!' : ''
-        let typeName: string
-        switch (col.columnKind) {
-          case 'boolean': typeName = 'bool'; break
-          case 'enum': typeName = col.enumName as string; break
-          case 'decimal':
-            typeName = col.precision !== undefined
-              ? col.scale !== undefined
-                ? `decimal(${col.precision}, ${col.scale})`
-                : `decimal(${col.precision})`
-              : 'decimal'
-            break
-          case 'float': typeName = 'float'; break
-          default: typeName = col.columnKind; break
-        }
-        lines.push(`  ${pk}${fieldName}${alias}: ${typeName}${req}`)
-      } else {
-        const rel = field as Relation
-        switch (rel.relationKind) {
-          case 'manyToOne': {
-            const alias = rel.column ? ` (${rel.column})` : ''
-            const req = rel.isNullable ? '' : '!'
-            lines.push(`  ${fieldName}${alias}: ${rel.target}${req}`)
-            break
-          }
-          case 'oneToMany':
-            lines.push(`  ${fieldName}: [${rel.target}]`)
-            break
-          case 'manyToMany':
-            lines.push(`  ${fieldName}: [${rel.target}] (${rel.junction})`)
-            break
-          case 'oneToOne': {
-            const refPart = rel.reference ? `.${rel.reference}` : ''
-            lines.push(`  ${fieldName}: <${rel.target}>${refPart}`)
-            break
-          }
-        }
-      }
-    }
-
-    parts.push(`${header} {\n${lines.join('\n')}\n}`)
-  }
-
-  // Junction tables
-  const junctions = new Map<string, { from: string; to: string }>()
-  for (const [entityName, entry] of Object.entries(s)) {
-    const meta = entry as EntityMeta
-    for (const [, field] of Object.entries(meta.definition)) {
-      if ((field as any).__kind === 'relation') {
-        const rel = field as Relation
-        if (rel.relationKind === 'manyToMany' && rel.junction && !junctions.has(rel.junction)) {
-          junctions.set(rel.junction, { from: entityName, to: rel.target })
-        }
-      }
-    }
-  }
-  for (const [junction, { from, to }] of junctions) {
-    parts.push(`entity ${junction} {\n  ${from} (${from}_id): ${from}\n  ${to} (${to}_id): ${to}\n}`)
-  }
-
-  return parts.join('\n\n')
-}
 
 // Seed SQL for petradb runtime tests
 export const seedSQL = `CREATE TABLE accounts (
@@ -391,3 +293,13 @@ INSERT INTO trip_steps VALUES ('30000000-0000-4000-8000-000000000001', 'place', 
 INSERT INTO trip_steps VALUES ('30000000-0000-4000-8000-000000000002', 'place', 2, NULL, '${ID.t1}', '${ID.p2}');
 INSERT INTO trip_steps VALUES ('30000000-0000-4000-8000-000000000003', 'place', 1, NULL, '${ID.t3}', '${ID.p2}');
 `
+
+// petradb loads a whole SQL script through rawMulti; the OQLInstance surface
+// only promises single-statement raw().
+interface MultiStatementBackend {
+  rawMulti(sql: string): Promise<void>
+}
+
+export function seedDatabase(db: { readonly __oql: OQLInstance }): Promise<void> {
+  return (db.__oql as unknown as MultiStatementBackend).rawMulti(seedSQL + dataSQL)
+}

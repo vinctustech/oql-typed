@@ -10,9 +10,9 @@
  */
 import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
-import { OQL_PETRADB } from '@vinctus/oql-petradb'
 
-import { typedOQL, type OQLInstance } from './db.js'
+import { createPetraDB } from './backends.js'
+import { typedOQL, type DB, type OQLInstance } from './db.js'
 import { query } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import {
@@ -37,7 +37,7 @@ import {
 import { fn, ref, outer, alias, caseWhen, subquery } from './expressions.js'
 
 import { count } from './functions.js'
-import { schema, schemaToDM, seedSQL, dataSQL, ID } from './test-schema.js'
+import { schema, seedDatabase, ID } from './test-schema.js'
 import { fieldRefToAST, fieldRefToOQL, isManyToOneRef, joinedFieldPath } from './ast.js'
 
 // ═══════════════════════════════════════════════════════════════════
@@ -56,6 +56,9 @@ const stub: OQLInstance = {
     update: () => Promise.resolve({}) as any,
     delete: () => Promise.resolve(),
     bulkDelete: () => Promise.resolve(),
+    bulkUpdate: () => Promise.resolve(),
+    link: () => Promise.resolve(),
+    unlink: () => Promise.resolve(),
   }),
 }
 const shape = typedOQL(stub, schema)
@@ -427,12 +430,11 @@ describe('relation refs: builder shorthands', () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe('relation refs: results against the database', () => {
-  let db: ReturnType<typeof typedOQL<typeof schema>>
+  let db: DB<typeof schema>
 
   before(async () => {
-    const oql = new OQL_PETRADB(schemaToDM(schema))
-    db = typedOQL(oql, schema, { engine })
-    await oql.rawMulti(seedSQL + dataSQL)
+    db = createPetraDB(schema, { engine })
+    await seedDatabase(db)
   })
 
   const ids = async (q: Promise<Array<{ id: string }>>) => (await q).map((row) => row.id).sort()
