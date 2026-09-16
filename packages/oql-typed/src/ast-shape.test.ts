@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 
 import { typedOQL, type OQLInstance } from './db.js'
 import { query } from './query.js'
-import { eq, ne, and, or, lt, inList, isNull, exists, ilike, asc, desc, arrayContains } from './operators.js'
-import { alias, currentTimestamp, subquery, caseWhen, outer } from './expressions.js'
-import { count, sum, concatOp } from './functions.js'
+import { eq, ne, and, or, lt, gte, between, inList, isNull, exists, ilike, asc, desc, arrayContains } from './operators.js'
+import { add, alias, currentDate, currentTimestamp, divide, multiply, subquery, subtract, caseWhen, outer } from './expressions.js'
+import { count, sum, concatOp, dateTrunc, datePart, makeInterval } from './functions.js'
 import { schema } from './test-schema.js'
 
 // .toAST() is a pure builder (never touches the backend), so these shape tests
@@ -345,5 +345,153 @@ describe('toAST() shape', () => {
         right: { kind: 'attr', ids: ['trip', 'store', 'place', 'id'] },
       },
     })
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// Arithmetic and intervals. The OQL AST has no cast node, so an interval
+// reaches the query through make_interval() and a date field through
+// date_part()/date_trunc() — never through `'30 minutes'::INTERVAL`.
+// ═══════════════════════════════════════════════════════════════════
+
+const interval30Minutes = {
+  kind: 'apply',
+  f: 'make_interval',
+  args: [
+    { kind: 'int', v: 0 },
+    { kind: 'int', v: 0 },
+    { kind: 'int', v: 0 },
+    { kind: 'int', v: 0 },
+    { kind: 'int', v: 0 },
+    { kind: 'int', v: 30 },
+    { kind: 'int', v: 0 },
+  ],
+}
+
+describe('toAST() shape: arithmetic and intervals', () => {
+  it('binary arithmetic emits an infix node per operator', () => {
+    assert.deepStrictEqual(add(db.vehicle.seats, 1).toAST(), {
+      kind: 'infix',
+      op: '+',
+      left: { kind: 'attr', ids: ['seats'] },
+      right: { kind: 'int', v: 1 },
+    })
+    assert.deepStrictEqual(subtract(db.vehicle.seats, 1).toAST(), {
+      kind: 'infix',
+      op: '-',
+      left: { kind: 'attr', ids: ['seats'] },
+      right: { kind: 'int', v: 1 },
+    })
+    assert.deepStrictEqual(multiply(db.vehicle.seats, 2).toAST(), {
+      kind: 'infix',
+      op: '*',
+      left: { kind: 'attr', ids: ['seats'] },
+      right: { kind: 'int', v: 2 },
+    })
+    assert.deepStrictEqual(divide(db.vehicle.seats, 2).toAST(), {
+      kind: 'infix',
+      op: '/',
+      left: { kind: 'attr', ids: ['seats'] },
+      right: { kind: 'int', v: 2 },
+    })
+  })
+
+  it('a nested arithmetic operand becomes a grouped node', () => {
+    assert.deepStrictEqual(multiply(add(db.vehicle.seats, 1), 2).toAST(), {
+      kind: 'infix',
+      op: '*',
+      left: {
+        kind: 'grouped',
+        expr: { kind: 'infix', op: '+', left: { kind: 'attr', ids: ['seats'] }, right: { kind: 'int', v: 1 } },
+      },
+      right: { kind: 'int', v: 2 },
+    })
+  })
+
+  it('currentDate emits the bare current_date attribute', () => {
+    assert.deepStrictEqual(currentDate().toAST(), { kind: 'attr', ids: ['current_date'] })
+  })
+
+  it('makeInterval passes every part positionally, zero-filling the omitted ones', () => {
+    assert.deepStrictEqual(makeInterval({ minutes: 30 }).toAST(), interval30Minutes)
+  })
+
+  it('datePart and dateTrunc emit their keyword as a literal, not a parameter', () => {
+    assert.deepStrictEqual(datePart('DOW', db.trip.createdAt).toAST(), {
+      kind: 'apply',
+      f: 'date_part',
+      args: [{ kind: 'str', v: 'DOW' }, { kind: 'attr', ids: ['createdAt'] }],
+    })
+    assert.deepStrictEqual(dateTrunc('day', db.trip.createdAt).toAST(), {
+      kind: 'apply',
+      f: 'date_trunc',
+      args: [{ kind: 'str', v: 'day' }, { kind: 'attr', ids: ['createdAt'] }],
+    })
+  })
+
+  it('between takes an expression on the left and on both bounds', () => {
+    const ast = query(db, 'trip')
+      .select('id')
+      .where(
+        between(
+          add(db.trip.createdAt, makeInterval({ minutes: 30 })),
+          currentTimestamp(),
+          add(currentTimestamp(), makeInterval({ minutes: 30 })),
+        ),
+      )
+      .toAST() as any
+    assert.deepStrictEqual(ast.select, {
+      kind: 'between',
+      expr: { kind: 'infix', op: '+', left: { kind: 'attr', ids: ['createdAt'] }, right: interval30Minutes },
+      lower: { kind: 'attr', ids: ['CURRENT_TIMESTAMP'] },
+      upper: {
+        kind: 'infix',
+        op: '+',
+        left: { kind: 'attr', ids: ['CURRENT_TIMESTAMP'] },
+        right: interval30Minutes,
+      },
+    })
+  })
+
+  it('a comparison renders an arithmetic left side rather than treating it as a path', () => {
+    const ast = query(db, 'trip')
+      .select('id')
+      .where(gte(subtract(currentTimestamp(), db.trip.createdAt), makeInterval({ days: 28 })))
+      .toAST() as any
+    assert.deepStrictEqual(ast.select.left, {
+      kind: 'infix',
+      op: '-',
+      left: { kind: 'attr', ids: ['CURRENT_TIMESTAMP'] },
+      right: { kind: 'attr', ids: ['createdAt'] },
+    })
+    assert.equal(ast.select.op, '>=')
+    assert.equal(ast.select.right.f, 'make_interval')
+  })
+
+  it('the weekday-plus-time-of-day shift keeps every written grouping', () => {
+    // current_date + make_interval(days: 1) * (dow(createdAt) - dow(current_date))
+    //   + (createdAt - date_trunc('day', createdAt))
+    const shift = add(
+      add(
+        currentDate(),
+        multiply(
+          makeInterval({ days: 1 }),
+          subtract(datePart('DOW', db.trip.createdAt), datePart('DOW', currentDate())),
+        ),
+      ),
+      subtract(db.trip.createdAt, dateTrunc('day', db.trip.createdAt)),
+    )
+    const ast = shift.toAST() as any
+    assert.equal(ast.kind, 'infix')
+    assert.equal(ast.op, '+')
+    assert.equal(ast.left.kind, 'grouped')
+    assert.equal(ast.left.expr.left.ids[0], 'current_date')
+    assert.equal(ast.left.expr.right.kind, 'grouped')
+    assert.equal(ast.left.expr.right.expr.op, '*')
+    assert.equal(ast.left.expr.right.expr.right.kind, 'grouped')
+    assert.equal(ast.left.expr.right.expr.right.expr.op, '-')
+    assert.equal(ast.right.kind, 'grouped')
+    assert.equal(ast.right.expr.op, '-')
+    assert.equal(ast.right.expr.right.f, 'date_trunc')
   })
 })

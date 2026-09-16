@@ -12,9 +12,9 @@ import { typedOQL } from './db.js'
 import type { DB, OQLInstance } from './db.js'
 import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
-import { eq, ne, gt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
-import { fn, ref, outer, alias, aliasedRelation, currentTimestamp, subquery, caseWhen } from './expressions.js'
-import { count, sum, avg, min, max, concatOp } from './functions.js'
+import { eq, ne, gt, gte, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
+import { fn, ref, outer, alias, aliasedRelation, currentTimestamp, currentDate, subquery, caseWhen, add, subtract, multiply, divide } from './expressions.js'
+import { count, sum, avg, min, max, concatOp, makeInterval, datePart, dateTrunc } from './functions.js'
 
 import { schema, seedDatabase, ID } from './test-schema.js'
 
@@ -1446,5 +1446,145 @@ describe('runtime: transactions', () => {
     const plain = typedOQL(withoutTransactions, schema, { engine })
     assert.throws(() => plain.transaction(async () => undefined), /does not support transactions/)
     assert.throws(() => plain.raw('SELECT 1'), /does not support raw SQL/)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// ARITHMETIC AND INTERVALS
+//
+// petradb implements current_date, date_trunc and the calendar fields of
+// date_part, so those run here. make_interval parses but is not evaluated by
+// the in-memory engine, and date_part('DOW'/'EPOCH') returns 0 there, so the
+// interval expressions are pinned by their emitted OQL and AST instead (see
+// ast-shape.test.ts).
+// ═══════════════════════════════════════════════════════════════════
+
+describe('runtime: arithmetic expressions', () => {
+  it('parenthesizes a nested operand so the written grouping is what runs', async () => {
+    const r = await query(db, 'vehicle')
+      .select(
+        'seats',
+        alias('grouped', multiply(add(db.vehicle.seats, 1), 2)),
+        alias('ungrouped', add(db.vehicle.seats, multiply(1, 2))),
+        alias('half', divide(db.vehicle.seats, 2)),
+      )
+      .where(eq(db.vehicle.id, ID.v1))
+      .one()
+    assert.ok(r)
+    assert.equal(r.seats, 4)
+    assert.equal(r.grouped, (r.seats + 1) * 2)
+    assert.equal(r.ungrouped, r.seats + 1 * 2)
+    assert.equal(r.half, r.seats / 2)
+  })
+
+  it('emits the operators inline, parenthesizing only the nested operand', () => {
+    const { queryStr, params } = query(db, 'vehicle')
+      .select(alias('n', multiply(add(db.vehicle.seats, 1), 2)))
+      .toOQL()
+    // A bare literal is parameterized on the string path, exactly as it is on
+    // the value side of a comparison.
+    assert.match(queryStr, /n: \(\(seats \+ :p0\) \* :p1\)/)
+    assert.deepStrictEqual(params, { p0: 1, p1: 2 })
+  })
+})
+
+describe('runtime: date and interval functions', () => {
+  it('current_date resolves to the database host’s date', async () => {
+    const r = await query(db, 'trip').select(alias('today', currentDate())).where(eq(db.trip.id, ID.t1)).one()
+    assert.ok(r)
+    const now = new Date()
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    assert.equal(String(r.today), localToday)
+  })
+
+  it('date_part pulls the calendar fields out of a timestamp column', async () => {
+    const r = await query(db, 'trip')
+      .select(
+        'createdAt',
+        alias('year', datePart('YEAR', db.trip.createdAt)),
+        alias('month', datePart('MONTH', db.trip.createdAt)),
+        alias('day', datePart('DAY', db.trip.createdAt)),
+        alias('hour', datePart('HOUR', db.trip.createdAt)),
+      )
+      .where(eq(db.trip.id, ID.t1))
+      .one()
+    assert.ok(r)
+    const createdAt = new Date(r.createdAt)
+    assert.equal(r.year, createdAt.getUTCFullYear())
+    assert.equal(r.month, createdAt.getUTCMonth() + 1)
+    assert.equal(r.day, createdAt.getUTCDate())
+    assert.equal(r.hour, createdAt.getUTCHours())
+  })
+
+  it('date_trunc drops the time of day', async () => {
+    const r = await query(db, 'trip')
+      .select('createdAt', alias('midnight', dateTrunc('day', db.trip.createdAt)))
+      .where(eq(db.trip.id, ID.t1))
+      .one()
+    assert.ok(r)
+    assert.equal(new Date(r.midnight).toISOString(), '2024-06-01T00:00:00.000Z')
+    assert.notEqual(new Date(r.createdAt).toISOString(), new Date(r.midnight).toISOString())
+  })
+
+  it('the keyword argument is a literal, never a parameter', () => {
+    const { queryStr, params } = query(db, 'trip')
+      .select(alias('d', datePart('DOW', db.trip.createdAt)), alias('t', dateTrunc('day', db.trip.createdAt)))
+      .toOQL()
+    assert.match(queryStr, /date_part\('DOW', createdAt\)/)
+    assert.match(queryStr, /date_trunc\('day', createdAt\)/)
+    assert.equal(Object.keys(params).length, 0)
+  })
+})
+
+describe('runtime: interval filters', () => {
+  it('a shift starting within the next 30 minutes', () => {
+    // The stored timestamp is a weekday plus a time of day in a reference
+    // week, so it is shifted onto the current week before the comparison.
+    const startAt = db.trip.scheduledAt
+    const shifted = add(
+      add(
+        currentDate(),
+        multiply(makeInterval({ days: 1 }), subtract(datePart('DOW', startAt), datePart('DOW', currentDate()))),
+      ),
+      subtract(startAt, dateTrunc('day', startAt)),
+    )
+    const { queryStr, params } = query(db, 'trip')
+      .select('id')
+      .where(
+        and(
+          between(shifted, currentTimestamp(), add(currentTimestamp(), makeInterval({ minutes: 30 }))),
+          or(
+            isNull(db.trip.createdAt),
+            lte(db.trip.createdAt, subtract(currentTimestamp(), makeInterval({ hours: 24 }))),
+          ),
+        ),
+      )
+      .toOQL()
+    assert.equal(
+      queryStr,
+      'trip {id} [' +
+        "(current_date + (make_interval(0, 0, 0, 1, 0, 0, 0) * (date_part('DOW', scheduledAt) - date_part('DOW', current_date))))" +
+        " + (scheduledAt - date_trunc('day', scheduledAt))" +
+        ' BETWEEN CURRENT_TIMESTAMP AND CURRENT_TIMESTAMP + make_interval(0, 0, 0, 0, 0, 30, 0)' +
+        ' AND (createdAt IS NULL OR createdAt <= CURRENT_TIMESTAMP - make_interval(0, 0, 0, 0, 24, 0, 0))]',
+    )
+    assert.equal(Object.keys(params).length, 0)
+  })
+
+  it('a monthly report that has not run in 28 days', () => {
+    const { queryStr, params } = query(db, 'trip')
+      .select('id')
+      .where(
+        or(
+          isNull(db.trip.scheduledAt),
+          gte(subtract(currentTimestamp(), db.trip.scheduledAt), makeInterval({ days: 28 })),
+        ),
+      )
+      .toOQL()
+    assert.equal(
+      queryStr,
+      'trip {id} [(scheduledAt IS NULL OR CURRENT_TIMESTAMP - scheduledAt >= make_interval(0, 0, 0, 28, 0, 0, 0))]',
+    )
+    assert.equal(Object.keys(params).length, 0)
   })
 })

@@ -39,6 +39,8 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 
 `like` / `ilike` also accept `FieldRef<string \| null>`.
 
+`between` takes an expression in place of any of its three operands, so a range can be anchored to the database clock: `between(field, currentTimestamp(), add(currentTimestamp(), makeInterval({ minutes: 30 })))`.
+
 `arrayContains(arrayField, value)` tests scalar membership in an array-typed column (`textArray()` / `integerArray()`) — the inverse of `inList` (which tests a scalar column against a JS array). `value` is constrained to the column's element type.
 
 ## Existence
@@ -53,12 +55,17 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 |-----------|-----|
 | `fn(name, ...args)` | `name(a, b, ...)` |
 | `currentTimestamp()` | `CURRENT_TIMESTAMP` |
+| `currentDate()` | `current_date` |
+| `add(a, b)` / `subtract(a, b)` | `a + b` / `a - b` |
+| `multiply(a, b)` / `divide(a, b)` | `a * b` / `a / b` |
 | `ref(m2oRel)` | `&relationName` |
 | `outer(field)` | `Entity.field` (correlated reference to the enclosing query) |
 | `subquery(rel, expr, filter?)` | `(rel {value: (expr)} [filter])` |
 | `alias(label, expr)` | `label: expression` |
 | `aliasedRelation(label, rel, spec)` | `label: rel {fields} [where] <orderBy>` |
 | `caseWhen(branches, else?)` | `CASE WHEN cond THEN result ... [ELSE result] END` |
+
+Arithmetic operands are columns, expressions, or literals. A nested arithmetic operand is parenthesized, so the written grouping survives precedence. Result types follow PostgreSQL: `number` ⊕ `number` → `number`, `Date` − `Date` → `Interval`, `Date` ± `Interval` → `Date`, `Interval` × / ÷ `number` → `Interval`. `Interval` is a branded type produced by `makeInterval()` or by subtracting two timestamps.
 
 ## Typed function wrappers
 
@@ -73,6 +80,9 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 | `count(field)` / `count('*')` | `count(field)` / `count(*)` | Always non-null |
 | `sum(field)` / `avg(field)` | `sum(field)` / `avg(field)` | Returns `number \| null` |
 | `min(field)` / `max(field)` | `min(field)` / `max(field)` | Returns `T \| null` |
+| `makeInterval(parts)` | `make_interval(y, m, w, d, h, min, s)` | Omitted parts are zero; returns `Interval` |
+| `datePart(field, x)` | `date_part('DOW', x)` | Field is a closed union, emitted as a literal; returns `number` |
+| `dateTrunc(unit, x)` | `date_trunc('day', x)` | Unit is a closed union, emitted as a literal; returns `Date` |
 
 ## Ordering
 

@@ -90,16 +90,56 @@ export {
   FilterContext,
 } from './operators.js'
 
-export type { FilterExpr, FilterArg, OrderExpr, FilterField } from './operators.js'
+export type { FilterExpr, FilterArg, OrderExpr, FilterField, BoundArg } from './operators.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Expressions
 // ══════════════════════════════════════════════════════════════════════
-export { fn, ref, outer, subquery, alias, aliasedRelation, currentTimestamp, caseWhen } from './expressions.js'
-export type { OQLExpr, AliasedRelationSpec, CaseBranch } from './expressions.js'
+export {
+  fn,
+  ref,
+  outer,
+  subquery,
+  alias,
+  aliasedRelation,
+  currentTimestamp,
+  currentDate,
+  caseWhen,
+  add,
+  subtract,
+  multiply,
+  divide,
+} from './expressions.js'
+export type {
+  OQLExpr,
+  AliasedRelationSpec,
+  CaseBranch,
+  Interval,
+  Operand,
+  NumberOperand,
+  DateOperand,
+  IntervalOperand,
+} from './expressions.js'
 
 // Typed function wrappers
-export { lower, upper, trim, length, concat, concatOp, coalesce, count, sum, avg, min, max } from './functions.js'
+export {
+  lower,
+  upper,
+  trim,
+  length,
+  concat,
+  concatOp,
+  coalesce,
+  count,
+  sum,
+  avg,
+  min,
+  max,
+  makeInterval,
+  datePart,
+  dateTrunc,
+} from './functions.js'
+export type { IntervalParts, DateField, DateTruncUnit } from './functions.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Mutations — insert/update/delete/bulkDelete are methods on every entity

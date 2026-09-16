@@ -19,6 +19,18 @@ import {
   avg,
   min,
   max,
+  add,
+  subtract,
+  multiply,
+  divide,
+  currentDate,
+  currentTimestamp,
+  makeInterval,
+  datePart,
+  dateTrunc,
+  between,
+  gte,
+  type Interval,
 } from './index.js'
 
 import { schema } from './test-schema.js'
@@ -124,4 +136,79 @@ describe('typed function wrappers', () => {
   sum(db.user.email)
   // @ts-expect-error — avg on a string field
   avg(db.user.email)
+})
+
+describe('typed arithmetic and interval expressions', () => {
+  it('placeholder (real assertions at type level)', () => assert.ok(true))
+
+  // number ⊕ number stays a number
+  function _numbers() {
+    const sum = add(db.vehicle.seats, 1)
+    type _Sum = AssertTrue<AssertEqual<(typeof sum)['_type'], number>>
+    const scaled = multiply(divide(subtract(db.vehicle.seats, 1), 2), 3)
+    type _Scaled = AssertTrue<AssertEqual<(typeof scaled)['_type'], number>>
+  }
+
+  // Date − Date is an Interval; Date ± Interval stays a Date
+  function _temporal() {
+    const elapsed = subtract(currentTimestamp(), db.trip.createdAt)
+    type _Elapsed = AssertTrue<AssertEqual<(typeof elapsed)['_type'], Interval>>
+    const deadline = add(currentTimestamp(), makeInterval({ minutes: 30 }))
+    type _Deadline = AssertTrue<AssertEqual<(typeof deadline)['_type'], Date>>
+    const grace = subtract(db.trip.createdAt, makeInterval({ hours: 24 }))
+    type _Grace = AssertTrue<AssertEqual<(typeof grace)['_type'], Date>>
+    const shifted = add(makeInterval({ days: 1 }), currentDate())
+    type _Shifted = AssertTrue<AssertEqual<(typeof shifted)['_type'], Date>>
+  }
+
+  // An interval scaled by a number is still an interval
+  function _intervalArithmetic() {
+    const days = multiply(makeInterval({ days: 1 }), datePart('DOW', currentDate()))
+    type _Days = AssertTrue<AssertEqual<(typeof days)['_type'], Interval>>
+    const halved = divide(makeInterval({ hours: 2 }), 2)
+    type _Halved = AssertTrue<AssertEqual<(typeof halved)['_type'], Interval>>
+    const combined = add(makeInterval({ days: 1 }), makeInterval({ hours: 2 }))
+    type _Combined = AssertTrue<AssertEqual<(typeof combined)['_type'], Interval>>
+  }
+
+  // A nullable column is an operand too — SQL arithmetic on NULL yields NULL
+  function _nullableOperand() {
+    const overdue = subtract(currentTimestamp(), db.trip.scheduledAt)
+    type _Overdue = AssertTrue<AssertEqual<(typeof overdue)['_type'], Interval>>
+  }
+
+  function _functionResultTypes() {
+    type _Now = AssertTrue<AssertEqual<ReturnType<typeof currentDate>['_type'], Date>>
+    type _Interval = AssertTrue<AssertEqual<ReturnType<typeof makeInterval>['_type'], Interval>>
+    type _Part = AssertTrue<AssertEqual<ReturnType<typeof datePart>['_type'], number>>
+    type _Trunc = AssertTrue<AssertEqual<ReturnType<typeof dateTrunc>['_type'], Date>>
+  }
+
+  // Comparisons take an arithmetic expression on either side
+  function _comparisons() {
+    gte(subtract(currentTimestamp(), db.trip.createdAt), makeInterval({ days: 28 }))
+    between(
+      add(db.trip.createdAt, makeInterval({ minutes: 30 })),
+      currentTimestamp(),
+      add(currentTimestamp(), makeInterval({ minutes: 30 })),
+    )
+    between(db.vehicle.seats, 1, add(db.vehicle.seats, 2))
+  }
+
+  function _rejectsMismatchedOperands() {
+    // @ts-expect-error — two timestamps cannot be added, only subtracted
+    add(db.trip.createdAt, db.trip.createdAt)
+    // @ts-expect-error — a timestamp cannot be scaled
+    multiply(db.trip.createdAt, 2)
+    // @ts-expect-error — a number divided by an interval is not an interval
+    divide(2, makeInterval({ days: 1 }))
+    // @ts-expect-error — an interval is not a number
+    add(db.vehicle.seats, makeInterval({ days: 1 }))
+    // @ts-expect-error — 'FORTNIGHT' is not a date field
+    datePart('FORTNIGHT', db.trip.createdAt)
+    // @ts-expect-error — 'fortnight' is not a truncation unit
+    dateTrunc('fortnight', db.trip.createdAt)
+    // @ts-expect-error — date_trunc takes a timestamp, not an interval
+    dateTrunc('day', makeInterval({ days: 1 }))
+  }
 })

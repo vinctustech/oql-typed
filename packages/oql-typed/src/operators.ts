@@ -275,16 +275,21 @@ export function ilike(field: FieldRef<string> | FieldRef<string | null>, pattern
   }
 }
 
-export function between<T>(field: FieldRef<T>, low: NoInfer<T>, high: NoInfer<T>): FilterExpr
+// The bounds take an expression as readily as a literal, so a range can be
+// anchored to the database clock:
+//   between(shiftStart, currentTimestamp(), add(currentTimestamp(), makeInterval({ minutes: 30 })))
+export type BoundArg<T> = NoInfer<T> | OQLExpr<NoInfer<T>> | FieldRef<NoInfer<T>>
+
+export function between<T>(field: FieldRef<T>, low: BoundArg<T>, high: BoundArg<T>): FilterExpr
 export function between(field: RelationFieldRef<Schema, any, 'manyToOne'>, low: string | number, high: string | number): FilterExpr
 export function between(field: any, low: any, high: any): FilterExpr {
   return {
     __filterExpr: true,
     toOQL(ctx) {
-      return `${resolveField(field, ctx)} BETWEEN ${ctx.addParam(low)} AND ${ctx.addParam(high)}`
+      return `${resolveField(field, ctx)} BETWEEN ${renderOperand(low, ctx)} AND ${renderOperand(high, ctx)}`
     },
     toAST() {
-      return { kind: 'between', expr: fieldRefToAST(field), lower: litToAST(low), upper: litToAST(high) }
+      return { kind: 'between', expr: fieldRefToAST(field), lower: operandToAST(low), upper: operandToAST(high) }
     },
   }
 }

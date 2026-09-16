@@ -134,6 +134,79 @@ The expression is emitted inline — it is **not** parameterized, so the databas
 Comparison operators accept an `OQLExpr` on the value side, not just a literal. `currentTimestamp()` is the common case, but any expression of the field's type works there too.
 </Aside>
 
+## `currentDate()` — the database's date
+
+`currentDate()` is the date-only twin of `currentTimestamp()`, emitting `current_date`. It is what you anchor a "which week is it" calculation to.
+
+## Arithmetic — `add`, `subtract`, `multiply`, `divide`
+
+The four binary operators take columns, expressions, and plain literals, and emit the operator inline:
+
+<Tabs syncKey="arith">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { add, multiply, divide, subtract } from '@vinctus/oql-typed'
+
+    db.vehicle.select(alias('capacity', multiply(add(db.vehicle.seats, 1), 2)))
+    ```
+  </TabItem>
+  <TabItem label="Generated OQL">
+    ```oql
+    vehicle {capacity: ((seats + :p0) * :p1)}
+    ```
+  </TabItem>
+</Tabs>
+
+A **nested** arithmetic operand is wrapped in parentheses, so the grouping you wrote is the grouping the database runs — precedence never rewrites the expression behind your back.
+
+Result types follow PostgreSQL's interval arithmetic:
+
+| Operands | Result |
+|----------|--------|
+| `number` ⊕ `number` | `number` |
+| `Date` − `Date` | `Interval` |
+| `Date` ± `Interval` | `Date` |
+| `Interval` × / ÷ `number` | `Interval` |
+| `Interval` ± `Interval` | `Interval` |
+
+`Interval` is a branded type produced by `makeInterval()` or by subtracting two timestamps. Mixing the wrong operands — adding two timestamps, scaling a timestamp — is a compile error.
+
+## Intervals and date fields — `makeInterval`, `datePart`, `dateTrunc`
+
+The OQL AST has no cast node, so `'30 minutes'::INTERVAL` and `EXTRACT(DOW FROM x)` cannot be expressed. Their PostgreSQL **function** forms can, and these wrappers are how an interval or a date field enters a query.
+
+| Helper | Emits | Type |
+|--------|-------|------|
+| `makeInterval({ years?, months?, weeks?, days?, hours?, minutes?, seconds? })` | `make_interval(y, m, w, d, h, min, s)` | `Interval` |
+| `datePart(field, x)` | `date_part('DOW', x)` | `number` |
+| `dateTrunc(unit, x)` | `date_trunc('day', x)` | `Date` |
+
+Omitted interval parts are passed as zero, because PostgreSQL matches `make_interval`'s arguments by position. The `field`/`unit` argument is a closed union (`'DOW'`, `'YEAR'`, `'EPOCH'`, … and `'day'`, `'month'`, `'year'`, …) and is emitted as a literal rather than a parameter, so PostgreSQL can resolve the overload from it.
+
+Comparison operators accept an arithmetic expression on **either** side, and `between` accepts one on the left and on both bounds:
+
+<Tabs syncKey="arith">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { add, subtract, gte, between, currentTimestamp, makeInterval } from '@vinctus/oql-typed'
+
+    // Reports that have not run in four weeks
+    db.report.where(gte(subtract(currentTimestamp(), db.report.lastRunAt), makeInterval({ days: 28 })))
+
+    // Trips starting within the next half hour
+    db.trip.where(
+      between(db.trip.scheduledAt, currentTimestamp(), add(currentTimestamp(), makeInterval({ minutes: 30 }))),
+    )
+    ```
+  </TabItem>
+  <TabItem label="Generated OQL">
+    ```oql
+    report [CURRENT_TIMESTAMP - lastRunAt >= make_interval(0, 0, 0, 28, 0, 0, 0)]
+    trip [scheduledAt BETWEEN CURRENT_TIMESTAMP AND CURRENT_TIMESTAMP + make_interval(0, 0, 0, 0, 0, 30, 0)]
+    ```
+  </TabItem>
+</Tabs>
+
 ## `ref(m2o)` — the `&` reference operator
 
 OQL's `&field` operator returns the foreign-key **column value itself**, rather than joining to the target entity. Its type is inferred as the target entity's primary-key type (e.g. a `uuid` FK → `string`).

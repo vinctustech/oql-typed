@@ -1,7 +1,7 @@
 import type { FieldRef } from './types.js'
 import type { FilterContext } from './operators.js'
-import type { OQLExpr } from './expressions.js'
-import { argToAST, fieldRefToOQL, foldInfix } from './ast.js'
+import type { DateOperand, Interval, IntervalOperand, OQLExpr } from './expressions.js'
+import { argToAST, fieldRefToOQL, foldInfix, litToAST } from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
 // Typed wrappers for common SQL functions.
@@ -93,6 +93,104 @@ export function concatOp(...args: StringArg[]): OQLExpr<string | null> & FieldRe
     },
   }
   return expr
+}
+
+// ─── Date and interval functions ────────────────────────────────────
+//
+// The OQL AST has no cast node, so `'30 minutes'::INTERVAL` and
+// `EXTRACT(DOW FROM x)` cannot be expressed. Their function forms can, and
+// these wrappers are how an interval or a date field enters an expression.
+
+export interface IntervalParts {
+  readonly years?: number
+  readonly months?: number
+  readonly weeks?: number
+  readonly days?: number
+  readonly hours?: number
+  readonly minutes?: number
+  readonly seconds?: number
+}
+
+// make_interval(years, months, weeks, days, hours, minutes, seconds) — omitted
+// parts are passed as zero, since PostgreSQL matches the arguments by position.
+export function makeInterval(parts: IntervalParts): OQLExpr<Interval> & FieldRef<Interval> {
+  return makeCall('make_interval', [
+    parts.years ?? 0,
+    parts.months ?? 0,
+    parts.weeks ?? 0,
+    parts.days ?? 0,
+    parts.hours ?? 0,
+    parts.minutes ?? 0,
+    parts.seconds ?? 0,
+  ])
+}
+
+export type DateField =
+  | 'CENTURY'
+  | 'DAY'
+  | 'DECADE'
+  | 'DOW'
+  | 'DOY'
+  | 'EPOCH'
+  | 'HOUR'
+  | 'ISODOW'
+  | 'ISOYEAR'
+  | 'MICROSECONDS'
+  | 'MILLENNIUM'
+  | 'MILLISECONDS'
+  | 'MINUTE'
+  | 'MONTH'
+  | 'QUARTER'
+  | 'SECOND'
+  | 'TIMEZONE'
+  | 'TIMEZONE_HOUR'
+  | 'TIMEZONE_MINUTE'
+  | 'WEEK'
+  | 'YEAR'
+
+// The field/unit argument is a keyword from a closed set, so it is emitted as a
+// literal on both paths instead of being parameterized: PostgreSQL picks the
+// date_part/date_trunc overload from that literal, and an untyped parameter
+// there would leave it to infer the argument's type.
+function temporalCall<T>(name: string, keyword: string, x: AnyArg): OQLExpr<T> & FieldRef<T> {
+  const expr: any = {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined,
+    entityName: '',
+    fieldName: '',
+    builder: null,
+    toOQL(ctx: FilterContext): string {
+      return `${name}('${keyword}', ${renderArg(x, ctx)})`
+    },
+    toAST() {
+      return { kind: 'apply', f: name, args: [litToAST(keyword), argToAST(x)] }
+    },
+  }
+  return expr
+}
+
+export function datePart(field: DateField, x: DateOperand | IntervalOperand): OQLExpr<number> & FieldRef<number> {
+  return temporalCall('date_part', field, x as AnyArg)
+}
+
+export type DateTruncUnit =
+  | 'microseconds'
+  | 'milliseconds'
+  | 'second'
+  | 'minute'
+  | 'hour'
+  | 'day'
+  | 'week'
+  | 'month'
+  | 'quarter'
+  | 'year'
+  | 'decade'
+  | 'century'
+  | 'millennium'
+
+export function dateTrunc(unit: DateTruncUnit, x: DateOperand): OQLExpr<Date> & FieldRef<Date> {
+  return temporalCall('date_trunc', unit, x as AnyArg)
 }
 
 // ─── Null handling ──────────────────────────────────────────────────

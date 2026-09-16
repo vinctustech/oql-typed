@@ -225,7 +225,8 @@ trip [store.account.name = :p0 AND &store IN :p1]
 For OQL features beyond plain field comparisons:
 
 ```typescript
-import { fn, ref, subquery, alias, aliasedRelation, caseWhen, currentTimestamp } from '@vinctus/oql-typed'
+import { fn, ref, subquery, alias, aliasedRelation, caseWhen, currentTimestamp, currentDate } from '@vinctus/oql-typed'
+import { add, subtract, multiply, divide, makeInterval, datePart, dateTrunc } from '@vinctus/oql-typed'
 import { lower, upper, trim, length, concat, concatOp, coalesce, count, sum, avg, min, max } from '@vinctus/oql-typed'
 
 // Function call in a filter — fn(name, ...args). Bare strings are parameterized.
@@ -239,6 +240,17 @@ isNull(ref(db.trip.returnTripFor))                     // → &returnTripFor IS 
 
 // Database clock — compare a timestamp column against "now"
 lte(db.account.trialEndAt, currentTimestamp())         // → trialEndAt <= CURRENT_TIMESTAMP
+currentDate()                                          // → current_date
+
+// Arithmetic — a nested operand is parenthesized, so your grouping is what runs
+multiply(add(db.vehicle.seats, 1), 2)                  // → ((seats + :p0) * :p1)
+
+// Intervals — make_interval/date_part/date_trunc are how an interval or a date
+// field enters a query; the OQL AST has no cast node for `'30 minutes'::INTERVAL`
+gte(subtract(currentTimestamp(), db.report.lastRunAt), makeInterval({ days: 28 }))
+between(db.trip.scheduledAt, currentTimestamp(), add(currentTimestamp(), makeInterval({ minutes: 30 })))
+datePart('DOW', db.trip.scheduledAt)                   // → date_part('DOW', scheduledAt)
+dateTrunc('day', db.trip.scheduledAt)                  // → date_trunc('day', scheduledAt)
 
 // Subquery as a value — projection is a typed expression; the scalar type T is inferred
 eq(subquery(db.vehicle.drivers, count('*')), 0)
@@ -258,6 +270,8 @@ db.trip.select('id', alias('priority', caseWhen(
   0,
 )))
 ```
+
+Arithmetic is typed the way PostgreSQL types it: `number` ⊕ `number` is a `number`, `Date` − `Date` is an `Interval`, `Date` ± `Interval` is a `Date`, and an `Interval` scaled by a `number` stays an `Interval`. Adding two timestamps or scaling one is a compile error. Comparison operators take an expression on either side, and `between` takes one in place of any of its three operands.
 
 ## Mutations
 

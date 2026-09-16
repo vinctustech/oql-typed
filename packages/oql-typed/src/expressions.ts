@@ -30,6 +30,17 @@ export interface OQLExpr<T = unknown> {
   toAST(): ASTNode
 }
 
+// Comparison / CASE / arithmetic operand -> OQL text. The string-path twin of
+// operandToAST: an expression emits inline, a column emits as a reference, and
+// anything else becomes a parameter.
+function operandToOQL(value: unknown, ctx: FilterContext): string {
+  if (value !== null && typeof value === 'object') {
+    if ('__oqlExpr' in (value as any)) return (value as OQLExpr).toOQL(ctx)
+    if ('__fieldRef' in (value as any) || '__relationRef' in (value as any)) return fieldRefToOQL(value)
+  }
+  return ctx.addParam(value)
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // fn(name, ...args) — function call, e.g. fn('concat', a, ' ', b)
 // ══════════════════════════════════════════════════════════════════════
@@ -87,13 +98,6 @@ export function caseWhen<T>(
   branches: ReadonlyArray<CaseBranch<T>>,
   elseValue?: T | OQLExpr<T> | FieldRef<T>,
 ): any {
-  const operandOQL = (v: unknown, ctx: FilterContext): string => {
-    if (v !== null && typeof v === 'object') {
-      if ('__oqlExpr' in (v as any)) return (v as OQLExpr).toOQL(ctx)
-      if ('__fieldRef' in (v as any) || '__relationRef' in (v as any)) return fieldRefToOQL(v)
-    }
-    return ctx.addParam(v)
-  }
   return {
     __oqlExpr: true,
     __fieldRef: true,
@@ -103,9 +107,9 @@ export function caseWhen<T>(
     builder: null,
     toOQL(ctx: FilterContext): string {
       const whens = branches
-        .map((b) => `WHEN ${and(b.when).toOQL(ctx)} THEN ${operandOQL(b.then, ctx)}`)
+        .map((b) => `WHEN ${and(b.when).toOQL(ctx)} THEN ${operandToOQL(b.then, ctx)}`)
         .join(' ')
-      const elsePart = elseValue !== undefined ? ` ELSE ${operandOQL(elseValue, ctx)}` : ''
+      const elsePart = elseValue !== undefined ? ` ELSE ${operandToOQL(elseValue, ctx)}` : ''
       return `CASE ${whens}${elsePart} END`
     },
     toAST() {
@@ -142,6 +146,120 @@ export function currentTimestamp(): OQLExpr<Date> & FieldRef<Date> {
       return { kind: 'attr', ids: ['CURRENT_TIMESTAMP'] }
     },
   } as any
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// currentDate() — the database's current date (current_date), the date-only
+// twin of currentTimestamp().
+// ══════════════════════════════════════════════════════════════════════
+
+export function currentDate(): OQLExpr<Date> & FieldRef<Date> {
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    _type: undefined,
+    entityName: '',
+    fieldName: 'current_date',
+    builder: null,
+    toOQL(_ctx: FilterContext): string {
+      return 'current_date'
+    },
+    toAST() {
+      return { kind: 'attr', ids: ['current_date'] }
+    },
+  } as any
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Arithmetic — add/subtract/multiply/divide over columns, expressions and
+// literals:
+//   add(currentTimestamp(), makeInterval({ minutes: 30 }))
+//     →  CURRENT_TIMESTAMP + make_interval(0, 0, 0, 0, 0, 30, 0)
+//
+// A nested arithmetic operand is wrapped in parentheses (a `grouped` node on
+// the AST path), so the grouping you wrote is the grouping that runs and
+// operator precedence never rewrites the expression.
+//
+// Typing follows PostgreSQL's interval arithmetic: number ⊕ number is a
+// number, Date − Date is an Interval, Date ± Interval is a Date, and an
+// Interval scaled by a number stays an Interval.
+// ══════════════════════════════════════════════════════════════════════
+
+// A PostgreSQL INTERVAL value. The OQL AST decoder has no cast node, so an
+// interval can only enter an expression through makeInterval() or by
+// subtracting two timestamps; the brand keeps it distinct from a plain string.
+export type Interval = string & { readonly __interval: true }
+
+// Nullable variants are accepted throughout: SQL arithmetic on NULL yields
+// NULL rather than an error, exactly as in the untyped query.
+export type Operand<T> = FieldRef<T | null> | OQLExpr<T | null>
+export type NumberOperand = Operand<number> | number
+export type DateOperand = Operand<Date> | Date
+export type IntervalOperand = Operand<Interval>
+
+type NumberExpr = OQLExpr<number> & FieldRef<number>
+type DateExpr = OQLExpr<Date> & FieldRef<Date>
+type IntervalExpr = OQLExpr<Interval> & FieldRef<Interval>
+
+type ArithmeticOperator = '+' | '-' | '*' | '/'
+
+function isArithmetic(operand: unknown): boolean {
+  return operand !== null && typeof operand === 'object' && '__arithmetic' in (operand as any)
+}
+
+function arithmetic(op: ArithmeticOperator, left: unknown, right: unknown): any {
+  const operandOQL = (operand: unknown, ctx: FilterContext): string => {
+    const text = operandToOQL(operand, ctx)
+    return isArithmetic(operand) ? `(${text})` : text
+  }
+  const operandAST = (operand: unknown): ASTNode => {
+    const node = operandToAST(operand)
+    return isArithmetic(operand) ? { kind: 'grouped', expr: node } : node
+  }
+  return {
+    __oqlExpr: true,
+    __fieldRef: true,
+    __arithmetic: true,
+    _type: undefined,
+    entityName: '',
+    fieldName: '',
+    builder: null,
+    toOQL(ctx: FilterContext): string {
+      return `${operandOQL(left, ctx)} ${op} ${operandOQL(right, ctx)}`
+    },
+    toAST(): ASTNode {
+      return { kind: 'infix', op, left: operandAST(left), right: operandAST(right) }
+    },
+  }
+}
+
+export function add(left: NumberOperand, right: NumberOperand): NumberExpr
+export function add(left: DateOperand, right: IntervalOperand): DateExpr
+export function add(left: IntervalOperand, right: DateOperand): DateExpr
+export function add(left: IntervalOperand, right: IntervalOperand): IntervalExpr
+export function add(left: any, right: any): any {
+  return arithmetic('+', left, right)
+}
+
+export function subtract(left: NumberOperand, right: NumberOperand): NumberExpr
+export function subtract(left: DateOperand, right: DateOperand): IntervalExpr
+export function subtract(left: DateOperand, right: IntervalOperand): DateExpr
+export function subtract(left: IntervalOperand, right: IntervalOperand): IntervalExpr
+export function subtract(left: any, right: any): any {
+  return arithmetic('-', left, right)
+}
+
+export function multiply(left: NumberOperand, right: NumberOperand): NumberExpr
+export function multiply(left: IntervalOperand, right: NumberOperand): IntervalExpr
+export function multiply(left: NumberOperand, right: IntervalOperand): IntervalExpr
+export function multiply(left: any, right: any): any {
+  return arithmetic('*', left, right)
+}
+
+export function divide(left: NumberOperand, right: NumberOperand): NumberExpr
+export function divide(left: IntervalOperand, right: NumberOperand): IntervalExpr
+export function divide(left: any, right: any): any {
+  return arithmetic('/', left, right)
 }
 
 // ══════════════════════════════════════════════════════════════════════
