@@ -1078,3 +1078,35 @@ describe('type: transactions', () => {
     })
   }
 })
+
+describe('type: OQLInstance data and parameter bags', () => {
+  it('placeholder (real assertions at type level)', () => assert.ok(true))
+
+  // `object` rather than `Record<string, unknown>`: an interface has no index
+  // signature, so the narrower type would reject it.
+  interface UserRow {
+    firstName: string
+    lastName: string
+  }
+
+  class UserPatch {
+    constructor(readonly firstName: string) {}
+  }
+
+  async function _acceptsAnInterfaceAndAClassInstance() {
+    const row: UserRow = { firstName: 'Alice', lastName: 'Adams' }
+    await oql.entity('user').insert(row)
+    await oql.entity('user').update(ID.u1, new UserPatch('Alicia'))
+    await oql.entity('user').bulkUpdate([[ID.u1, new UserPatch('Alicia')]])
+  }
+
+  async function _acceptsAnInterfaceAsQueryParameters() {
+    interface Params {
+      id: string
+    }
+    const params: Params = { id: ID.u1 }
+    await oql.queryOne('user { id } [id = :id]', params)
+    await oql.queryMany('user { id } [id = :id]', params)
+    await oql.count('user [id = :id]', params)
+  }
+})

@@ -9,22 +9,25 @@ import { createMutationMethods } from './mutations.js'
 // OQL runtime interface — minimal shape we need from the backend
 // ══════════════════════════════════════════════════════════════════════
 
+// Parameter and row-data bags are typed as `object` rather than
+// `Record<string, unknown>`: the latter rejects class instances and interfaces
+// without an index signature, which is exactly what callers tend to hand in.
 export interface OQLInstance {
-  queryOne<T = any>(query: string, params?: Record<string, unknown>): Promise<T | undefined>
-  queryMany<T = any>(query: string, params?: Record<string, unknown>): Promise<T[]>
-  count(query: string, params?: Record<string, unknown>): Promise<number>
+  queryOne<T = any>(query: string, params?: object): Promise<T | undefined>
+  queryMany<T = any>(query: string, params?: object): Promise<T[]>
+  count(query: string, params?: object): Promise<number>
   // AST entry points — accept a pre-built plain-object AST, bypassing the string parser
   queryOneAST<T = any>(ast: unknown): Promise<T | undefined>
   queryManyAST<T = any>(ast: unknown): Promise<T[]>
   countAST(ast: unknown): Promise<number>
   entity(name: string): {
-    insert<T = any>(data: Record<string, unknown>): Promise<T>
-    update<T = any>(id: unknown, data: Record<string, unknown>): Promise<T>
+    insert<T = any>(data: object): Promise<T>
+    update<T = any>(id: unknown, data: object): Promise<T>
     delete(id: unknown): Promise<void>
     bulkDelete(ids: unknown[]): Promise<void>
     link(id1: unknown, resource: string, id2: unknown): Promise<void>
     unlink(id1: unknown, resource: string, id2: unknown): Promise<void>
-    bulkUpdate(updates: [unknown, Record<string, unknown>][]): Promise<void>
+    bulkUpdate(updates: [unknown, object][]): Promise<void>
   }
   // Optional because only the PostgreSQL backend implements transactions
   transaction?<T>(body: (tx: OQLInstance) => Promise<T>): Promise<T>
