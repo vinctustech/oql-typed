@@ -4,6 +4,10 @@
  */
 import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execSync } from 'node:child_process'
 
 import { createPetraDB, createPostgresDB } from './backends.js'
 import type { DB } from './db.js'
@@ -103,5 +107,130 @@ describe('createPostgresDB', () => {
     const db = createPostgresDB(schema, { ...unreachable, ssl: { rejectUnauthorized: false }, idleTimeoutMillis: 1000, max: 3 })
     assert.equal(typeof db.close, 'function')
     db.close()
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════
+// A consumer project compiles against the library under --strict. The
+// optional petradb peer is the reason this matters most: createPetraDB types
+// its constructor structurally, so the emitted declarations must never name
+// @vinctus/oql-petradb — a consumer that skips the optional peer would have
+// nothing to resolve it to.
+// ══════════════════════════════════════════════════════════════════════
+
+const consumerSource = `
+import {
+  createPetraDB,
+  createPostgresDB,
+  defineSchema,
+  desc,
+  entity,
+  eq,
+  integer,
+  manyToOne,
+  oneToMany,
+  text,
+  timestamp,
+  uuid,
+} from '@vinctus/oql-typed'
+
+const schema = defineSchema({
+  account: entity('accounts', {
+    id: uuid().primaryKey(),
+    name: text(),
+    users: oneToMany('user'),
+  }),
+  user: entity('users', {
+    id: uuid().primaryKey(),
+    firstName: text().column('first_name'),
+    loginCount: integer(),
+    lastLoginAt: timestamp().column('last_login_at').nullable(),
+    account: manyToOne('account', { column: 'account_id' }),
+  }),
+})
+
+const db = createPostgresDB(schema, {
+  host: 'localhost',
+  port: 5432,
+  database: 'app',
+  user: 'app',
+  password: 'secret',
+})
+
+const memory = createPetraDB(schema)
+
+export async function report(): Promise<string> {
+  const rows = await db.user
+    .select('id', 'firstName', { account: ['name'] })
+    .where(eq(db.user.firstName, 'Alice'))
+    .orderBy(desc(db.user.lastLoginAt))
+    .many()
+  const inserted = await memory.account.insert({ name: 'Acme' })
+  const accountName: string = rows.length > 0 ? rows[0].account.name : inserted.name
+  db.close()
+  return accountName
+}
+`
+
+describe('consumer compilation', () => {
+  it('a strict consumer project typechecks against the library', () => {
+    const packageRoot = process.cwd()
+    const dir = mkdtempSync(join(tmpdir(), 'oql-typed-consumer-'))
+    try {
+      const file = join(dir, 'consumer.ts')
+      writeFileSync(file, consumerSource)
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }))
+      const tsconfig = {
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'Node16',
+          moduleResolution: 'Node16',
+          strict: true,
+          esModuleInterop: true,
+          skipLibCheck: true,
+          noEmit: true,
+          baseUrl: packageRoot,
+          paths: { '@vinctus/oql-typed': ['src/index.ts'] },
+          // The library is compiled from source here, and its backend
+          // factories reach for node:module.
+          typeRoots: [join(packageRoot, 'node_modules', '@types')],
+          types: ['node'],
+        },
+        include: [file],
+      }
+      const tsconfigPath = join(dir, 'tsconfig.json')
+      writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2))
+
+      try {
+        execSync(`npx tsc --project ${tsconfigPath}`, { encoding: 'utf-8', stdio: 'pipe' })
+      } catch (error: any) {
+        const output = (error.stdout || '') + (error.stderr || '')
+        assert.fail(`Consumer failed to compile under --strict:\n${output}`)
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('emits declarations that never name the optional petradb peer', () => {
+    const packageRoot = process.cwd()
+    const outDir = mkdtempSync(join(tmpdir(), 'oql-typed-declarations-'))
+    try {
+      execSync(
+        `npx tsc --project ${join(packageRoot, 'tsconfig.json')} --emitDeclarationOnly --declarationMap false --outDir ${outDir}`,
+        { encoding: 'utf-8', stdio: 'pipe' },
+      )
+      const declarations = readdirSync(outDir).filter((name) => name.endsWith('.d.ts'))
+      assert.ok(declarations.length > 0, 'no declarations were emitted')
+      for (const name of declarations) {
+        const declaration = readFileSync(join(outDir, name), 'utf-8')
+        assert.ok(
+          !declaration.includes('@vinctus/oql-petradb'),
+          `${name} names the optional peer dependency`,
+        )
+      }
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
   })
 })

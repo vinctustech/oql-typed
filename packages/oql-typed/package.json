@@ -17,9 +17,6 @@
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
-  "bin": {
-    "oql-typed-codegen": "dist/cli.js"
-  },
   "dependencies": {
     "@vinctus/oql-pg": "1.4.3-beta.1"
   },

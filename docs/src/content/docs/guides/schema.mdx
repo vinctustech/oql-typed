@@ -214,7 +214,7 @@ post: entity('posts', {
 
 ## Wiring up the runtime
 
-`createPostgresDB(schema, connection)` returns a typed `db` handle. The schema you pass is the same object you got from `defineSchema(...)`, and it is the only data model — the factory generates the OQL `.dm` string from it and hands that to the backend.
+`createPostgresDB(schema, connection)` returns a typed `db` handle. The schema you pass is the same object you got from `defineSchema(...)`, and it is the only data model — the factory derives the OQL data model from it and hands that to the backend.
 
 ```typescript
 import { createPostgresDB } from '@vinctus/oql-typed'
@@ -239,11 +239,11 @@ const db = createPetraDB(schema)
 If you need to construct the OQL instance yourself — an unusual backend, a shared instance, custom pool wiring — `typedOQL(instance, schema)` is the escape hatch. You own the instance and its data model:
 
 ```typescript
-import { typedOQL, generateDM } from '@vinctus/oql-typed'
+import { typedOQL } from '@vinctus/oql-typed'
 import { OQL_PG } from '@vinctus/oql-pg'
 import { schema } from './schema.js'
 
-const instance = new OQL_PG(generateDM(schema), host, port, database, user, password, false, 7200000, 10)
+const instance = new OQL_PG(dataModel, host, port, database, user, password, false, 7200000, 10)
 
 export const db = typedOQL(instance, schema)
 ```
@@ -343,7 +343,3 @@ What's exercised here:
 - **Every relation kind**: `manyToOne`, `oneToMany`, `manyToMany`, `oneToOne`.
 - **Two `manyToOne`s to the same target** (`post.author` and `post.reviewedBy`).
 - **Self-referencing `manyToOne`** (`comment.parent`).
-
-<Aside type="tip">
-Already have an OQL `.dm` file? Convert it to a TypeScript schema once with [DM codegen](/oql-typed/guides/codegen/), then delete the `.dm` — the schema object generates it from then on.
-</Aside>

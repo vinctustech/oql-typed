@@ -47,7 +47,6 @@ export default defineConfig({
             { label: 'Expressions', link: '/guides/expressions/' },
             { label: 'Mutations', link: '/guides/mutations/' },
             { label: 'Conditional QueryBuilder', link: '/guides/query-builder/' },
-            { label: 'DM codegen', link: '/guides/codegen/' },
           ],
         },
         {

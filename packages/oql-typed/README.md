@@ -8,7 +8,7 @@ Compile-time typed queries for [OQL](https://github.com/vinctustech/oql). Define
 npm install @vinctus/oql-typed
 ```
 
-That's everything for PostgreSQL — the driver comes along as a dependency, and the schema you declare in TypeScript is the only data model (no `.dm` file).
+That's everything for PostgreSQL — the driver comes along as a dependency, and the schema you declare in TypeScript is the only data model.
 
 For the in-memory backend used in tests, add the optional peer:
 
@@ -93,13 +93,13 @@ import { schema } from './schema.js'
 const db = createPetraDB(schema)   // requires the optional @vinctus/oql-petradb peer
 ```
 
-If you need to construct the OQL instance yourself, `typedOQL(instance, schema)` is the escape hatch, and `generateDM(schema)` gives you the data-model string it needs:
+If you need to construct the OQL instance yourself, `typedOQL(instance, schema)` is the escape hatch — you own the instance and the data model you hand it:
 
 ```typescript
-import { typedOQL, generateDM } from '@vinctus/oql-typed'
+import { typedOQL } from '@vinctus/oql-typed'
 import { OQL_PG } from '@vinctus/oql-pg'
 
-const instance = new OQL_PG(generateDM(schema), host, port, database, user, password, false, 7200000, 10)
+const instance = new OQL_PG(dataModel, host, port, database, user, password, false, 7200000, 10)
 export const db = typedOQL(instance, schema)
 ```
 
@@ -355,20 +355,3 @@ query(db, 'user')           // or just: db.user
 
 Column modifiers: `.primaryKey()`, `.nullable()`, `.column('db_alias')`
 
-## Migrating from an existing `.dm` file
-
-One-time conversion of a data-model file into a TypeScript schema:
-
-```bash
-npx oql-typed-codegen schema.dm src/schema.generated.ts
-```
-
-Or programmatically:
-
-```typescript
-import { parseDMAndGenerate } from '@vinctus/oql-typed'
-
-const tsSource = parseDMAndGenerate(dmString)
-```
-
-The generated file uses `defineSchema(...)` and string-literal relation targets, identical to the hand-written form. Check it in, then retire the `.dm` file: the schema object is the source of truth from then on, and `generateDM(schema)` regenerates the model whenever the backend needs it.

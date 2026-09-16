@@ -1,6 +1,9 @@
 // Generate an OQL `.dm` data-model string from a TypeScript schema object.
 // This is what lets consumers declare their model once, in TypeScript, and
 // have oql-typed build the backend for them — no `.dm` file anywhere.
+//
+// Internal: the backend factories in backends.ts are the only caller, and the
+// package does not export it.
 
 import { Column, Relation } from './schema.js'
 import type { EntityDef, EntityMeta, SchemaEntry } from './schema.js'

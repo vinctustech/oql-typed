@@ -124,13 +124,3 @@ db.post.select('id').many()                      // query starter on the handle
 db.post.findOneById(id)                          // ditto
 ```
 
-## DM codegen
-
-| Function | Description |
-|----------|-------------|
-| `generateDM(schema)` | Emits the OQL `.dm` data model for a schema. The backend factories call this for you. |
-| `parseDMAndGenerate(dmString)` | Parses a `.dm` file and emits TypeScript schema source. |
-| `parseDM(dmString)` | Lower-level parser; returns a `ParsedDataModel` object. |
-| `generateSchemaTS(parsedDM)` | Emits TypeScript source from a `ParsedDataModel`. |
-
-The `.dm`-to-TypeScript direction is a one-time migration step for projects that already have a data-model file. See [DM codegen](/oql-typed/guides/codegen/).

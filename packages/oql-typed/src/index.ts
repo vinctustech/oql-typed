@@ -58,11 +58,6 @@ export { typedOQL } from './db.js'
 export type { DB, EntityHandle, OQLInstance, Engine } from './db.js'
 
 // ══════════════════════════════════════════════════════════════════════
-// Data model generation — the `.dm` string the backends are built from
-// ══════════════════════════════════════════════════════════════════════
-export { generateDM } from './generate-dm.js'
-
-// ══════════════════════════════════════════════════════════════════════
 // Query
 // ══════════════════════════════════════════════════════════════════════
 export { query, projection } from './query.js'

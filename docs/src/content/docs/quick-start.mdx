@@ -58,7 +58,7 @@ In five minutes you'll have a typed schema, a live database handle, and your fir
 
 3. **Open the database.**
 
-   `createPostgresDB` derives the OQL data model from the schema and builds the backend for you — there is no `.dm` file to write or keep in sync.
+   `createPostgresDB` derives the OQL data model from the schema and builds the backend for you — the TypeScript schema is the only place the model is written down.
 
    ```typescript
    // db.ts
@@ -130,7 +130,7 @@ Jump into the guides to learn schema design, all operators and expressions, and 
 </Aside>
 
 <CardGrid>
-  <LinkCard title="Schema" href="/oql-typed/guides/schema/" description="Entities, columns, relations, and the .dm data model." />
+  <LinkCard title="Schema" href="/oql-typed/guides/schema/" description="Entities, columns, relations, and wiring up the runtime." />
   <LinkCard title="Queries" href="/oql-typed/guides/queries/" description="Projections, filters, nested relations, and ordering." />
   <LinkCard title="Operators" href="/oql-typed/guides/operators/" description="Every filter operator with examples." />
   <LinkCard title="Recipes" href="/oql-typed/recipes/" description="Common query patterns." />
