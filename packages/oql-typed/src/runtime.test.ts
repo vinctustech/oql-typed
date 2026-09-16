@@ -1592,6 +1592,37 @@ describe('runtime: date and interval functions', () => {
   })
 })
 
+describe('runtime: interval columns', () => {
+  it('reads an interval column, nullable one included', async () => {
+    const r = await db.shift
+      .select('id', 'label', 'duration', 'gracePeriod')
+      .where(eq(db.shift.id, ID.sh2))
+      .one()
+    assert.ok(r)
+    // petradb renders an interval as an ISO-8601 duration string. Under
+    // PostgreSQL a top-level column arrives as a postgres-interval object
+    // instead, which is why the read type covers both forms.
+    assert.equal(r.duration, 'PT2H')
+    assert.equal(r.gracePeriod, 'PT15M')
+    const missing = await db.shift.select('gracePeriod').where(eq(db.shift.id, ID.sh1)).one()
+    assert.ok(missing)
+    assert.equal(missing.gracePeriod, null)
+  })
+
+  it('inserts an interval written as a PostgreSQL literal', async () => {
+    const created = await db.shift.insert({
+      label: 'Night',
+      startsAt: new Date('2024-06-01T22:00:00Z'),
+      duration: '45 minutes',
+      store: ID.s1,
+    })
+    const readBack = await db.shift.select('duration').where(eq(db.shift.id, created.id)).one()
+    assert.ok(readBack)
+    assert.equal(readBack.duration, 'PT45M')
+    await db.shift.delete(created.id)
+  })
+})
+
 describe('runtime: interval filters', () => {
   it('a shift starting within the next 30 minutes', () => {
     // The stored timestamp is a weekday plus a time of day in a reference
@@ -1623,6 +1654,24 @@ describe('runtime: interval filters', () => {
         " + (scheduledAt - date_trunc('day', scheduledAt))" +
         ' BETWEEN CURRENT_TIMESTAMP AND CURRENT_TIMESTAMP + make_interval(0, 0, 0, 0, 0, 30, 0)' +
         ' AND (createdAt IS NULL OR createdAt <= CURRENT_TIMESTAMP - make_interval(0, 0, 0, 0, 24, 0, 0))]',
+    )
+    assert.equal(Object.keys(params).length, 0)
+  })
+
+  it('a shift still inside its grace period, comparing two interval columns', () => {
+    const { queryStr, params } = query(db, 'shift')
+      .select('id')
+      .where(
+        and(
+          gte(subtract(currentTimestamp(), db.shift.startsAt), db.shift.duration),
+          lte(subtract(currentTimestamp(), db.shift.startsAt), add(db.shift.duration, db.shift.gracePeriod)),
+        ),
+      )
+      .toOQL()
+    assert.equal(
+      queryStr,
+      'shift {id} [CURRENT_TIMESTAMP - startsAt >= duration' +
+        ' AND CURRENT_TIMESTAMP - startsAt <= duration + gracePeriod]',
     )
     assert.equal(Object.keys(params).length, 0)
   })

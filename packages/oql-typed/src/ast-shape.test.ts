@@ -468,6 +468,33 @@ describe('toAST() shape: arithmetic and intervals', () => {
     assert.equal(ast.select.right.f, 'make_interval')
   })
 
+  it('an interval column is an operand like any other, needing no cast', () => {
+    const ast = query(db, 'shift')
+      .select('id')
+      .where(gte(subtract(currentTimestamp(), db.shift.startsAt), db.shift.duration))
+      .toAST() as any
+    assert.deepStrictEqual(ast.select, {
+      kind: 'infix',
+      op: '>=',
+      left: {
+        kind: 'infix',
+        op: '-',
+        left: { kind: 'attr', ids: ['CURRENT_TIMESTAMP'] },
+        right: { kind: 'attr', ids: ['startsAt'] },
+      },
+      right: { kind: 'attr', ids: ['duration'] },
+    })
+  })
+
+  it('a nullable interval column added to a timestamp emits a plain infix node', () => {
+    assert.deepStrictEqual(add(db.shift.startsAt, db.shift.gracePeriod).toAST(), {
+      kind: 'infix',
+      op: '+',
+      left: { kind: 'attr', ids: ['startsAt'] },
+      right: { kind: 'attr', ids: ['gracePeriod'] },
+    })
+  })
+
   it('the weekday-plus-time-of-day shift keeps every written grouping', () => {
     // current_date + make_interval(days: 1) * (dow(createdAt) - dow(current_date))
     //   + (createdAt - date_trunc('day', createdAt))

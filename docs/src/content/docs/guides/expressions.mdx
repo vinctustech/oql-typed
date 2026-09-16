@@ -169,7 +169,31 @@ Result types follow PostgreSQL's interval arithmetic:
 | `Interval` × / ÷ `number` | `Interval` |
 | `Interval` ± `Interval` | `Interval` |
 
-`Interval` is a branded type produced by `makeInterval()` or by subtracting two timestamps. Mixing the wrong operands — adding two timestamps, scaling a timestamp — is a compile error.
+`Interval` is a distinct type, so mixing the wrong operands — adding two timestamps, scaling a timestamp, adding an interval to a number — is a compile error. An interval enters an expression three ways: an `interval()` column, `makeInterval()`, or subtracting two timestamps. A plain string never does.
+
+An interval column is an operand like any other, and needs no cast:
+
+<Tabs syncKey="arith">
+  <TabItem label="TypeScript">
+    ```typescript
+    import { add, alias, subtract, gte, currentTimestamp } from '@vinctus/oql-typed'
+
+    // Shifts that have run past their scheduled length
+    db.shift.where(gte(subtract(currentTimestamp(), db.shift.startsAt), db.shift.duration))
+
+    // When a shift ends, grace period included
+    db.shift.select(alias('endsAt', add(add(db.shift.startsAt, db.shift.duration), db.shift.gracePeriod)))
+    ```
+  </TabItem>
+  <TabItem label="Generated OQL">
+    ```oql
+    shift [CURRENT_TIMESTAMP - startsAt >= duration]
+    shift {endsAt: ((startsAt + duration) + gracePeriod)}
+    ```
+  </TabItem>
+</Tabs>
+
+A nullable interval column works too — SQL arithmetic on `NULL` yields `NULL` rather than an error. See [Interval columns](/guides/schema/#interval-columns) for what an interval reads back as.
 
 ## Intervals and date fields — `makeInterval`, `datePart`, `dateTrunc`
 

@@ -44,6 +44,19 @@ createdAt: timestamp().column('created_at').default(),  // NOT NULL DEFAULT now(
 
 The column may be omitted on insert, but it is never `null` on read — so there is no need to declare it `.nullable()` just to make inserts compile.
 
+## Interval columns
+
+`interval()` produces an `Interval`, not a `string`, so an interval column is an arithmetic operand — no cast, no raw OQL:
+
+```typescript
+duration: interval(),  // Interval
+
+db.shift.where(gte(subtract(currentTimestamp(), db.shift.startsAt), db.shift.duration))
+await db.shift.insert({ startsAt, duration: '30 minutes', store: storeId })
+```
+
+Writes take PostgreSQL interval syntax. Reads give back either a parsed `IntervalObject` or an interval string depending on the backend and the projection — see the [interval columns guide](https://vinctustech.github.io/oql-typed/guides/schema/#interval-columns).
+
 See the [docs](https://vinctustech.github.io/oql-typed/) for the full guide — schema, queries, operators, expressions, mutations, transactions, and the conditional QueryBuilder.
 
 ## Repository layout

@@ -59,11 +59,44 @@ import {
 | `timestamp()` | `Date` | `timestamp` |
 | `date()` | `Date` | `date` |
 | `time()` | `string` | `time` |
-| `interval()` | `string` | `interval` |
+| `interval()` | `Interval` | `interval` |
 | `json<T = unknown>()` | `T` | `json` / `jsonb` |
 | `textArray()` | `string[]` | `text[]` |
 | `integerArray()` | `number[]` | `integer[]` |
 | `enumType<T>(name, values)` | `T` | custom enum |
+
+#### Interval columns
+
+`Interval` is a distinct type rather than `string`, so an interval column can be added to a timestamp, scaled, and compared against another interval without a cast — see [Arithmetic](/guides/expressions/#arithmetic). A text column can never stand in for one.
+
+```typescript
+shift: entity('shifts', {
+  id:          uuid().primaryKey(),
+  startsAt:    timestamp().column('starts_at'),
+  duration:    interval(),                              // Interval
+  gracePeriod: interval().column('grace_period').nullable(), // Interval | null
+})
+
+await db.shift.insert({ startsAt, duration: '30 minutes', store: storeId })
+```
+
+Writes take the PostgreSQL interval syntax you write (`'30 minutes'`, `'1 day 02:30:00'`); the backend casts it on the way in. Reads stay strict.
+
+`Interval` is `IntervalObject | IntervalString`, because the runtime shape depends on where the value is read:
+
+| Read | Runtime value |
+|------|---------------|
+| A top-level `interval` column under PostgreSQL | An `IntervalObject` — the driver parses it with `postgres-interval`, setting only the non-zero fields: `{ days: 1, hours: 2, minutes: 30 }`. |
+| The same column inside a `oneToMany`/`manyToMany` projection | A string in PostgreSQL interval syntax — OQL builds sub-collections with `to_json()`, which renders the interval as text before the driver sees it. |
+| Any `interval` column under `createPetraDB` | A string in ISO-8601 duration form: `'PT30M'`. |
+
+So narrow before you use one:
+
+```typescript
+const text = typeof shift.duration === 'string' ? shift.duration : shift.duration.toISOString()
+```
+
+Installing `keepIntervalAsString` (see [Result type parsing](#result-type-parsing)) makes every PostgreSQL read a string, collapsing the first case into the second.
 
 ### Modifiers
 
@@ -259,6 +292,7 @@ The driver hands some column types back as raw text. `typeParsers` maps a Postgr
 import {
   PostgresTypeOid,
   createPostgresDB,
+  keepIntervalAsString,
   keepJsonAsString,
   parseInt8AsNumber,
   parseTimestampAsUtcDate,
@@ -270,6 +304,7 @@ export const db = createPostgresDB(schema, {
     [PostgresTypeOid.INT8]: parseInt8AsNumber,            // bigint as a number, not a string
     [PostgresTypeOid.TIMESTAMP]: parseTimestampAsUtcDate, // zoneless timestamp read as UTC
     [PostgresTypeOid.JSON]: keepJsonAsString,             // json left unparsed
+    [PostgresTypeOid.INTERVAL]: keepIntervalAsString,     // interval as text, matching nested reads
   },
 })
 ```

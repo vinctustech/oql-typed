@@ -7,6 +7,7 @@ import type {
   ProjectionArg,
   InferProjection,
 } from './types.js'
+import type { Interval } from './interval.js'
 import { and, type FilterArg, type FilterContext, type OrderExpr } from './operators.js'
 import {
   argToAST,
@@ -185,11 +186,10 @@ export function currentDate(): OQLExpr<Date> & FieldRef<Date> {
 // Interval scaled by a number stays an Interval.
 // ══════════════════════════════════════════════════════════════════════
 
-// A PostgreSQL INTERVAL value. The OQL AST decoder has no cast node, so an
-// interval can only enter an expression through makeInterval() or by
-// subtracting two timestamps; the brand keeps it distinct from a plain string.
-export type Interval = string & { readonly __interval: true }
-
+// The OQL AST decoder has no cast node, so an interval can only enter an
+// expression through an interval column, makeInterval(), or the subtraction of
+// two timestamps — never through `'30 minutes'::INTERVAL`.
+//
 // Nullable variants are accepted throughout: SQL arithmetic on NULL yields
 // NULL rather than an error, exactly as in the untyped query.
 export type Operand<T> = FieldRef<T | null> | OQLExpr<T | null>

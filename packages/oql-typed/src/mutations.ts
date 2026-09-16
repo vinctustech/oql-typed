@@ -1,5 +1,6 @@
 import type { Schema, InferAllScalars } from './types.js'
 import type { Column, Relation, Unwrap } from './schema.js'
+import type { IntervalObject } from './interval.js'
 import type { OQLInstance } from './db.js'
 
 // ══════════════════════════════════════════════════════════════════════
@@ -62,7 +63,13 @@ type OptionalFKKeys<D> = {
     : never
 }[ManyToOneKeys<D>]
 
-type ScalarValue<C> = C extends Column<infer T, any, any, any> ? T : never
+// Reads are strict — an interval comes back as whatever the backend parsed —
+// but a write takes the PostgreSQL interval literal the consumer wrote
+// ('30 minutes'), which the backend casts on the way in. Only interval columns
+// widen; every other column keeps its read type.
+type WritableValue<T> = [Extract<T, IntervalObject>] extends [never] ? T : T | string
+
+type ScalarValue<C> = C extends Column<infer T, any, any, any> ? WritableValue<T> : never
 
 export type InsertInput<S extends Schema, Name extends keyof S> = {
   [K in RequiredScalarKeys<Unwrap<S[Name]>>]: ScalarValue<Unwrap<S[Name]>[K]>

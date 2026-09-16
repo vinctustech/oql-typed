@@ -2,6 +2,8 @@
 // This eliminates circular reference issues since TypeScript resolves everything via
 // indexed access (Schema[name]) rather than following function return types.
 
+import type { Interval } from './interval.js'
+
 // ══════════════════════════════════════════════════════════════════════
 // Column kinds (runtime discriminator)
 // ══════════════════════════════════════════════════════════════════════
@@ -143,7 +145,7 @@ export { booleanCol as boolean }
 export const timestamp = () => new Column<Date>('timestamp')
 export const date = () => new Column<Date>('date')
 export const time = () => new Column<string>('time')
-export const interval = () => new Column<string>('interval')
+export const interval = () => new Column<Interval>('interval')
 export const json = <T = unknown>() => new Column<T>('json')
 export const textArray = () => new Column<string[]>('text[]')
 export const integerArray = () => new Column<number[]>('integer[]')

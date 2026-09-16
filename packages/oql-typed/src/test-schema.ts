@@ -9,6 +9,7 @@ import {
   integer,
   boolean,
   timestamp,
+  interval,
   manyToOne,
   oneToMany,
   manyToMany,
@@ -140,6 +141,16 @@ export const schema = defineSchema({
     note: text().nullable().default(),
     store: manyToOne('store', { column: 'store_id' }),
   }),
+  // Exercises interval columns: a required one and a nullable one, alongside
+  // the timestamp they are added to and subtracted from.
+  shift: entity('shifts', {
+    id: uuid().primaryKey(),
+    label: text(),
+    startsAt: timestamp().column('starts_at'),
+    duration: interval(),
+    gracePeriod: interval().column('grace_period').nullable(),
+    store: manyToOne('store', { column: 'store_id' }),
+  }),
 })
 
 export type AppSchema = typeof schema
@@ -248,6 +259,14 @@ CREATE TABLE audit_entries (
   note TEXT DEFAULT 'none',
   store_id UUID REFERENCES stores(id)
 );
+CREATE TABLE shifts (
+  id UUID PRIMARY KEY,
+  label TEXT NOT NULL,
+  starts_at TIMESTAMP NOT NULL,
+  duration INTERVAL NOT NULL,
+  grace_period INTERVAL,
+  store_id UUID REFERENCES stores(id)
+);
 `
 
 // Fixed UUIDs for deterministic data
@@ -270,6 +289,8 @@ export const ID = {
   t4: '10000000-0000-4000-8000-000000000004',
   z1: '20000000-0000-4000-8000-000000000001',
   z2: '20000000-0000-4000-8000-000000000002',
+  sh1: '40000000-0000-4000-8000-000000000001',
+  sh2: '40000000-0000-4000-8000-000000000002',
 }
 
 export const dataSQL = `
@@ -312,6 +333,9 @@ INSERT INTO trips VALUES ('${ID.t4}', 'CANCELLED', 1, NULL, '2024-05-20T16:00:00
 INSERT INTO trip_steps VALUES ('30000000-0000-4000-8000-000000000001', 'place', 1, NULL, '${ID.t1}', '${ID.p1}');
 INSERT INTO trip_steps VALUES ('30000000-0000-4000-8000-000000000002', 'place', 2, NULL, '${ID.t1}', '${ID.p2}');
 INSERT INTO trip_steps VALUES ('30000000-0000-4000-8000-000000000003', 'place', 1, NULL, '${ID.t3}', '${ID.p2}');
+
+INSERT INTO shifts VALUES ('${ID.sh1}', 'Morning', '2024-06-01T08:00:00Z', INTERVAL '30 minutes', NULL, '${ID.s1}');
+INSERT INTO shifts VALUES ('${ID.sh2}', 'Evening', '2024-06-01T16:00:00Z', INTERVAL '2 hours', INTERVAL '15 minutes', '${ID.s1}');
 `
 
 // petradb loads a whole SQL script through rawMulti; the OQLInstance surface

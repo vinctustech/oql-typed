@@ -16,8 +16,10 @@ import { typedOQL } from './db.js'
 import { query, projection } from './query.js'
 import { queryBuilder } from './query-builder.js'
 import { eq, ne, gt, gte, lt, lte, and, or, ilike, inList, isNull, isNotNull, between, exists, desc, asc, arrayContains } from './operators.js'
-import { alias, aliasedRelation, currentTimestamp, fn, ref, outer, subquery, caseWhen } from './expressions.js'
+import { add, alias, aliasedRelation, currentTimestamp, fn, multiply, ref, outer, subquery, subtract, caseWhen } from './expressions.js'
+import { makeInterval } from './functions.js'
 import { defineSchema, entity, text, uuid } from './schema.js'
+import type { Interval, IntervalObject, IntervalString } from './interval.js'
 import type { FieldRef, Prettify } from './types.js'
 
 import { schema, ID, type Role, type TripState } from './test-schema.js'
@@ -1116,6 +1118,69 @@ describe('type: currentTimestamp() comparisons', () => {
     gt(db.vehicle.seats, currentTimestamp())
     // @ts-expect-error — not valid for a boolean field
     eq(db.account.enabled, currentTimestamp())
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════
+// INTERVAL COLUMNS
+// ═══════════════════════════════════════════════════════════════════
+
+describe('type: interval columns', () => {
+  it('placeholder (real assertions at type level)', () => assert.ok(true))
+
+  type _Duration = AssertTrue<AssertEqual<typeof db.shift.duration, FieldRef<Interval>>>
+  type _Grace = AssertTrue<AssertEqual<typeof db.shift.gracePeriod, FieldRef<Interval | null>>>
+
+  function _columnIsAnIntervalOperand() {
+    const finishesAt = add(db.shift.startsAt, db.shift.duration)
+    type _Finishes = AssertTrue<AssertEqual<(typeof finishesAt)['_type'], Date>>
+    const opensAt = subtract(db.shift.startsAt, db.shift.gracePeriod)
+    type _Opens = AssertTrue<AssertEqual<(typeof opensAt)['_type'], Date>>
+    const doubled = multiply(db.shift.duration, 2)
+    type _Doubled = AssertTrue<AssertEqual<(typeof doubled)['_type'], Interval>>
+    const total = add(db.shift.duration, makeInterval({ minutes: 15 }))
+    type _Total = AssertTrue<AssertEqual<(typeof total)['_type'], Interval>>
+  }
+
+  function _comparedAgainstAnIntervalExpression() {
+    gte(subtract(currentTimestamp(), db.shift.startsAt), db.shift.duration)
+    gte(subtract(currentTimestamp(), db.shift.startsAt), db.shift.gracePeriod)
+    lt(db.shift.duration, makeInterval({ hours: 8 }))
+  }
+
+  function _rejectsAPlainString() {
+    // @ts-expect-error — a text column is not an interval operand
+    add(db.shift.startsAt, db.shift.label)
+    // @ts-expect-error — an interval column is not a string operand
+    eq(db.shift.duration, '30 minutes')
+    // @ts-expect-error — an interval column is not a number operand
+    add(db.shift.duration, 1)
+  }
+
+  async function _insertTakesAnIntervalLiteral() {
+    // Writes accept the PostgreSQL interval syntax the consumer writes; the
+    // read type stays the parsed value.
+    const r = await db.shift.insert({
+      id: 'x',
+      label: 'Morning',
+      startsAt: new Date(),
+      duration: '30 minutes',
+      gracePeriod: null,
+      store: 'some-store-id',
+    })
+    type _Duration = AssertTrue<AssertEqual<(typeof r)['duration'], Interval>>
+    type _Grace = AssertTrue<AssertEqual<(typeof r)['gracePeriod'], Interval | null>>
+    await db.shift.update('x', { duration: '2 hours', gracePeriod: '15 minutes' })
+  }
+
+  function _readNarrowsToEitherRuntimeForm() {
+    // A top-level PostgreSQL read gives the parsed object, a sub-collection or
+    // petradb read gives a string, so a consumer has to narrow.
+    const describeInterval = (value: Interval): string =>
+      typeof value === 'string' ? value : value.toISOString()
+    type _Object = AssertTrue<AssertEqual<Extract<Interval, IntervalObject>, IntervalObject>>
+    type _String = AssertTrue<AssertEqual<Extract<Interval, string>, IntervalString>>
+    return describeInterval
   }
 })
 

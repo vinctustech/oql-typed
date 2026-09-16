@@ -40,7 +40,7 @@ The entity name itself comes from the `defineSchema` key, not from `entity(...)`
 | `timestamp()` | `Date` |
 | `date()` | `Date` |
 | `time()` | `string` |
-| `interval()` | `string` |
+| `interval()` | `Interval` (= `IntervalObject \| IntervalString`) |
 | `json<T = unknown>()` | `T` |
 | `textArray()` | `string[]` |
 | `integerArray()` | `number[]` |
@@ -122,10 +122,11 @@ const db = createPostgresDB(schema, {
 
 | Export | Description |
 |--------|-------------|
-| `PostgresTypeOid` | `INT8` (20), `TIMESTAMP` (1114), `TIMESTAMPTZ` (1184), `JSON` (114), `NUMERIC` (1700). |
+| `PostgresTypeOid` | `INT8` (20), `TIMESTAMP` (1114), `TIMESTAMPTZ` (1184), `JSON` (114), `INTERVAL` (1186), `NUMERIC` (1700). |
 | `parseInt8AsNumber` | `bigint` text as a `number`; values past `Number.MAX_SAFE_INTEGER` lose precision. |
 | `parseTimestampAsUtcDate` | A zoneless `timestamp` as a `Date` read in UTC rather than the local zone. |
 | `keepJsonAsString` | Leaves `json` as the raw string. |
+| `keepIntervalAsString` | Leaves `interval` as the raw string, so a top-level read matches a nested one. |
 | `PostgresTypeParser` | The parser type, `(value: string) => unknown`. |
 
 ### `createPetraDB(schema, options?)`

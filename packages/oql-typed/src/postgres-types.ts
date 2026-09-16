@@ -2,6 +2,8 @@
 // often. Nothing here is applied by default; pass what you want through
 // `typeParsers` on the connection given to createPostgresDB.
 
+import type { Interval } from './interval.js'
+
 export type PostgresTypeParser = (value: string) => unknown
 
 export const PostgresTypeOid = {
@@ -9,6 +11,7 @@ export const PostgresTypeOid = {
   INT8: 20,
   TIMESTAMP: 1114,
   TIMESTAMPTZ: 1184,
+  INTERVAL: 1186,
   NUMERIC: 1700,
 } as const
 
@@ -28,4 +31,11 @@ export function parseTimestampAsUtcDate(value: string): Date {
 
 export function keepJsonAsString(value: string): string {
   return value
+}
+
+// The driver parses `interval` into a postgres-interval object, but the same
+// column read through a sub-collection arrives as text — OQL renders those
+// with to_json(). Keeping the raw text makes every interval read a string.
+export function keepIntervalAsString(value: string): Interval {
+  return value as Interval
 }

@@ -1,6 +1,7 @@
 import type { FieldRef } from './types.js'
 import type { FilterContext } from './operators.js'
-import type { DateOperand, Interval, IntervalOperand, OQLExpr } from './expressions.js'
+import type { Interval } from './interval.js'
+import type { DateOperand, IntervalOperand, OQLExpr } from './expressions.js'
 import { argToAST, fieldRefToOQL, foldInfix, litToAST } from './ast.js'
 
 // ══════════════════════════════════════════════════════════════════════
