@@ -10,6 +10,7 @@ import type { DB, Engine, OQLInstance } from './db.js'
 // pull the module in rather than relying on the caller having imported it.
 import './query.js'
 import { generateDM } from './generate-dm.js'
+import type { PostgresTypeParser } from './postgres-types.js'
 import type { Schema } from './types.js'
 
 export interface PostgresConnection {
@@ -21,10 +22,29 @@ export interface PostgresConnection {
   ssl?: boolean | Record<string, unknown>
   idleTimeoutMillis?: number
   max?: number
+  // Result parsers keyed by PostgreSQL type OID — see PostgresTypeOid and the
+  // parser helpers. None are installed unless given.
+  typeParsers?: Readonly<Record<number, PostgresTypeParser>>
 }
 
 export interface PostgresOptions {
   engine?: Engine
+}
+
+// Structural, so the emitted declarations never reference the driver's types.
+type PostgresTypesModule = {
+  types: { setTypeParser(oid: number, parser: (value: string) => unknown): void }
+}
+
+// The parsers have to land on the very `pg` copy @vinctus/oql-pg requires.
+// Resolving `pg` from oql-pg's own module path finds that copy whatever the
+// installer did — a consumer's own `pg` may well be a different instance.
+function registerTypeParsers(typeParsers: Readonly<Record<number, PostgresTypeParser>>): void {
+  const nodeRequire = createRequire(import.meta.url)
+  const pgModule = createRequire(nodeRequire.resolve('@vinctus/oql-pg'))('pg') as PostgresTypesModule
+  for (const [oid, parser] of Object.entries(typeParsers)) {
+    pgModule.types.setTypeParser(Number(oid), parser)
+  }
 }
 
 export function createPostgresDB<S extends Schema>(
@@ -32,6 +52,7 @@ export function createPostgresDB<S extends Schema>(
   connection: PostgresConnection,
   options?: PostgresOptions,
 ): DB<S> {
+  if (connection.typeParsers) registerTypeParsers(connection.typeParsers)
   const instance = new OQL_PG(
     generateDM(schema),
     connection.host,

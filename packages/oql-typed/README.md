@@ -84,6 +84,31 @@ export const db = createPostgresDB(schema, {
 db.close()
 ```
 
+#### Result type parsing
+
+`typeParsers` maps a PostgreSQL type OID to a parser for the raw text the driver returns. The parsers are installed on the driver instance this package uses, so you need no `pg` dependency of your own:
+
+```typescript
+import {
+  PostgresTypeOid,
+  createPostgresDB,
+  keepJsonAsString,
+  parseInt8AsNumber,
+  parseTimestampAsUtcDate,
+} from '@vinctus/oql-typed'
+
+export const db = createPostgresDB(schema, {
+  host, port, database, user, password,
+  typeParsers: {
+    [PostgresTypeOid.INT8]: parseInt8AsNumber,          // bigint as a number, not a string
+    [PostgresTypeOid.TIMESTAMP]: parseTimestampAsUtcDate, // zoneless timestamp read as UTC
+    [PostgresTypeOid.JSON]: keepJsonAsString,           // json left unparsed
+  },
+})
+```
+
+`PostgresTypeOid` also carries `TIMESTAMPTZ` and `NUMERIC` for parsers of your own. Nothing is installed unless you ask for it.
+
 In tests, swap the factory and keep everything else:
 
 ```typescript

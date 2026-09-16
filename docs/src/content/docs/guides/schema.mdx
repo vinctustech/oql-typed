@@ -227,6 +227,31 @@ export const db = createPostgresDB(schema, {
 
 `db.post.id`, `db.post.author.email`, `db.post.select(...)`, etc. all become available with full type inference. Call `db.close()` on shutdown to release the connection pool.
 
+### Result type parsing
+
+The driver hands some column types back as raw text. `typeParsers` maps a PostgreSQL type OID to the parser that converts it, and the parsers are installed on the driver instance this package uses — you need no `pg` dependency of your own. Nothing is installed unless you ask for it.
+
+```typescript
+import {
+  PostgresTypeOid,
+  createPostgresDB,
+  keepJsonAsString,
+  parseInt8AsNumber,
+  parseTimestampAsUtcDate,
+} from '@vinctus/oql-typed'
+
+export const db = createPostgresDB(schema, {
+  host, port, database, user, password,
+  typeParsers: {
+    [PostgresTypeOid.INT8]: parseInt8AsNumber,            // bigint as a number, not a string
+    [PostgresTypeOid.TIMESTAMP]: parseTimestampAsUtcDate, // zoneless timestamp read as UTC
+    [PostgresTypeOid.JSON]: keepJsonAsString,             // json left unparsed
+  },
+})
+```
+
+`PostgresTypeOid` also carries `TIMESTAMPTZ` and `NUMERIC` for parsers you write yourself; any OID and `(value: string) => unknown` pair works.
+
 For tests, `createPetraDB(schema)` gives the same handle backed by the in-memory engine — install the optional `@vinctus/oql-petradb` peer to use it.
 
 ```typescript

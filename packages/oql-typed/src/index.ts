@@ -54,6 +54,8 @@ export type {
 // ══════════════════════════════════════════════════════════════════════
 export { createPostgresDB, createPetraDB } from './backends.js'
 export type { PostgresConnection, PostgresOptions, PetraOptions, PetraStorage } from './backends.js'
+export { PostgresTypeOid, parseInt8AsNumber, parseTimestampAsUtcDate, keepJsonAsString } from './postgres-types.js'
+export type { PostgresTypeParser } from './postgres-types.js'
 export { typedOQL } from './db.js'
 export type { DB, EntityHandle, OQLInstance, Engine } from './db.js'
 

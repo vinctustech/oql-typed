@@ -2,9 +2,10 @@
  * BACKEND FACTORIES — createPetraDB/createPostgresDB build the OQL backend
  * from the TypeScript schema, so a consumer never constructs one itself.
  */
-import { describe, it, before } from 'node:test'
+import { describe, it, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
@@ -12,6 +13,12 @@ import { execSync } from 'node:child_process'
 import { createPetraDB, createPostgresDB } from './backends.js'
 import type { DB } from './db.js'
 import { eq } from './operators.js'
+import {
+  PostgresTypeOid,
+  keepJsonAsString,
+  parseInt8AsNumber,
+  parseTimestampAsUtcDate,
+} from './postgres-types.js'
 import { defineSchema, entity, uuid, text, manyToOne } from './schema.js'
 import { schema, seedDatabase, ID } from './test-schema.js'
 
@@ -110,16 +117,67 @@ describe('createPostgresDB', () => {
   })
 })
 
+// The driver instance the factory must reach: `pg` as resolved from oql-pg's
+// own module path, which is the copy oql-pg requires at runtime.
+const nodeRequire = createRequire(import.meta.url)
+const pgModule = createRequire(nodeRequire.resolve('@vinctus/oql-pg'))('pg') as {
+  types: {
+    setTypeParser(oid: number, parser: (value: string) => unknown): void
+    getTypeParser(oid: number): (value: string) => unknown
+  }
+}
+
+describe('createPostgresDB type parsers', () => {
+  const installedParser = (value: string) => `parsed:${value}`
+  const defaultInt8Parser = pgModule.types.getTypeParser(PostgresTypeOid.INT8)
+
+  after(() => {
+    pgModule.types.setTypeParser(PostgresTypeOid.INT8, defaultInt8Parser)
+  })
+
+  it('registers each parser on the pg instance oql-pg resolves', () => {
+    const db = createPostgresDB(schema, {
+      ...unreachable,
+      typeParsers: { [PostgresTypeOid.INT8]: installedParser },
+    })
+    assert.equal(pgModule.types.getTypeParser(PostgresTypeOid.INT8), installedParser)
+    db.close()
+  })
+
+  it('leaves the registry untouched when no parsers are given', () => {
+    pgModule.types.setTypeParser(PostgresTypeOid.INT8, defaultInt8Parser)
+    const db = createPostgresDB(schema, unreachable)
+    assert.equal(pgModule.types.getTypeParser(PostgresTypeOid.INT8), defaultInt8Parser)
+    db.close()
+  })
+})
+
+describe('postgres parser helpers', () => {
+  it('reads int8 text as a number', () => {
+    assert.equal(parseInt8AsNumber('9007199254740'), 9007199254740)
+  })
+
+  it('reads a zoneless timestamp as UTC', () => {
+    assert.equal(parseTimestampAsUtcDate('2024-03-01 12:30:00').toISOString(), '2024-03-01T12:30:00.000Z')
+  })
+
+  it('leaves json as the raw string', () => {
+    assert.equal(keepJsonAsString('{"a":1}'), '{"a":1}')
+  })
+})
+
 // ══════════════════════════════════════════════════════════════════════
-// A consumer project compiles against the library under --strict. The
-// optional petradb peer is the reason this matters most: createPetraDB types
-// its constructor structurally, so the emitted declarations must never name
+// A consumer project compiles against the library under --strict, installing
+// result parsers without a `pg` dependency of its own. The optional petradb
+// peer is the reason the declarations matter most: createPetraDB types its
+// constructor structurally, so the emitted declarations must never name
 // @vinctus/oql-petradb — a consumer that skips the optional peer would have
 // nothing to resolve it to.
 // ══════════════════════════════════════════════════════════════════════
 
 const consumerSource = `
 import {
+  PostgresTypeOid,
   createPetraDB,
   createPostgresDB,
   defineSchema,
@@ -127,8 +185,11 @@ import {
   entity,
   eq,
   integer,
+  keepJsonAsString,
   manyToOne,
   oneToMany,
+  parseInt8AsNumber,
+  parseTimestampAsUtcDate,
   text,
   timestamp,
   uuid,
@@ -155,6 +216,11 @@ const db = createPostgresDB(schema, {
   database: 'app',
   user: 'app',
   password: 'secret',
+  typeParsers: {
+    [PostgresTypeOid.INT8]: parseInt8AsNumber,
+    [PostgresTypeOid.TIMESTAMP]: parseTimestampAsUtcDate,
+    [PostgresTypeOid.JSON]: keepJsonAsString,
+  },
 })
 
 const memory = createPetraDB(schema)
@@ -212,7 +278,7 @@ describe('consumer compilation', () => {
     }
   })
 
-  it('emits declarations that never name the optional petradb peer', () => {
+  it('emits declarations that never name a backend package', () => {
     const packageRoot = process.cwd()
     const outDir = mkdtempSync(join(tmpdir(), 'oql-typed-declarations-'))
     try {
@@ -228,6 +294,8 @@ describe('consumer compilation', () => {
           !declaration.includes('@vinctus/oql-petradb'),
           `${name} names the optional peer dependency`,
         )
+        assert.ok(!declaration.includes('@vinctus/oql-pg'), `${name} names the OQL backend`)
+        assert.ok(!/from ['"]pg['"]/.test(declaration), `${name} names the postgres driver`)
       }
     } finally {
       rmSync(outDir, { recursive: true, force: true })
