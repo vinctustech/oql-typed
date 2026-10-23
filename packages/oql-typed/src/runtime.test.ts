@@ -875,6 +875,52 @@ describe('runtime: outer (correlated subquery)', () => {
     )
   })
 
+  it('reaches a grandparent from a nested EXISTS', async () => {
+    // s1 (place p1): t1 steps p1, p2 -> a step away from the store. s2 (place p2): t3 step p2 -> none.
+    const rows = await query(db, 'store')
+      .select('id')
+      .where(exists(db.store.trips, exists(db.trip.steps, ne(db.tripStep.place, outer(db.store.place)))))
+      .orderBy(asc(db.store.id))
+      .many()
+
+    assert.deepStrictEqual(
+      rows.map((store) => store.id),
+      [ID.s1],
+    )
+  })
+
+  it('correlates a scalar subquery', async () => {
+    const rows = await query(db, 'trip')
+      .select('id')
+      .where(gt(subquery(db.trip.steps, count('*'), ne(db.tripStep.place, outer(db.trip.store.place))), 0))
+      .orderBy(asc(db.trip.id))
+      .many()
+
+    assert.deepStrictEqual(
+      rows.map((trip) => trip.id),
+      [ID.t1],
+    )
+  })
+
+  it('correlates an aliased relation filter', async () => {
+    const rows = await query(db, 'trip')
+      .select(
+        'id',
+        aliasedRelation('away', db.trip.steps, {
+          fields: ['id'],
+          where: ne(db.tripStep.place, outer(db.trip.store.place)),
+        }),
+      )
+      .where(inList(db.trip.id, [ID.t1, ID.t3]))
+      .orderBy(asc(db.trip.id))
+      .many()
+
+    assert.deepStrictEqual(rows, [
+      { id: ID.t1, away: [{ id: '30000000-0000-4000-8000-000000000002' }] },
+      { id: ID.t3, away: [] },
+    ])
+  })
+
   it('reaches the enclosing row from a subquery entity with no relation back to it', async () => {
     // A user has no `store` attribute, so the reference can only resolve against the enclosing store.
     const correlated = await query(db, 'store')
