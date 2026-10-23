@@ -274,7 +274,7 @@ describe('relation refs: composed filters', () => {
       .select('id')
       .where(exists(shape.vehicle.trips, ne(shape.trip.store, outer(shape.vehicle.store))))
       .toOQL()
-    assert.ok(queryStr.includes('EXISTS(trips [&store != vehicle.store.id])'), queryStr)
+    assert.ok(queryStr.includes('EXISTS(trips [&store != ^vehicle.store.id])'), queryStr)
   })
 
   it('outer() multi-hop keeps the joined path', () => {
@@ -282,7 +282,7 @@ describe('relation refs: composed filters', () => {
       .select('id')
       .where(exists(shape.trip.steps, ne(shape.tripStep.place, outer(shape.trip.store.place))))
       .toOQL()
-    assert.ok(queryStr.includes('EXISTS(steps [&place != trip.store.place.id])'), queryStr)
+    assert.ok(queryStr.includes('EXISTS(steps [&place != ^trip.store.place.id])'), queryStr)
   })
 })
 

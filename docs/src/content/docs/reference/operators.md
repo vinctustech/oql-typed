@@ -59,7 +59,7 @@ Value type uses `NoInfer<T>` to prevent literal widening — it must match the f
 | `add(a, b)` / `subtract(a, b)` | `a + b` / `a - b` |
 | `multiply(a, b)` / `divide(a, b)` | `a * b` / `a / b` |
 | `ref(m2oRel)` | `&relationName` |
-| `outer(field)` | `Entity.field` (correlated reference to the enclosing query) |
+| `outer(field)` | `^entity.field` (correlated reference to the enclosing query) |
 | `subquery(rel, expr, filter?)` | `(rel {value: (expr)} [filter])` |
 | `alias(label, expr)` | `label: expression` |
 | `aliasedRelation(label, rel, spec)` | `label: rel {fields} [where] <orderBy>` |

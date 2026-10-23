@@ -249,7 +249,7 @@ isNull(ref(db.comment.parent))          // top-level comments
 
 ## `outer(field)` — correlated reference to the enclosing query
 
-Inside a subquery filter, a plain column resolves to the *subquery's* entity. `outer(field)` prefixes the field's path with the **root entity the ref chain started from** (`db.<root>…`) so it reaches back to the **enclosing** query's row — OQL's correlated reference (leading segment = outer entity name).
+Inside a subquery filter, a plain column resolves to the *subquery's* entity. `outer(field)` reaches back to the **enclosing** query's row: it renders as OQL's outer reference `^<root>.<path>`, where `<root>` is the **entity the ref chain started from** (`db.<root>…`). OQL resolves it against the nearest enclosing query over that entity and reads it from that query's own joins, so the subquery adds none.
 
 ```typescript
 import { outer, exists, ne } from '@vinctus/oql-typed'
@@ -261,7 +261,7 @@ query(db, 'order')
 ```
 
 ```oql
-order {id} [EXISTS(lineItems [warehouse.id != order.warehouse.id])]
+order {id} [EXISTS(lineItems [warehouse.id != ^order.warehouse.id])]
 ```
 
 Without `outer`, `db.order.warehouse` inside the subquery renders as a bare `warehouse.id` and resolves to the line item's warehouse, not the order's.
@@ -276,7 +276,7 @@ query(db, 'order')
 ```
 
 ```oql
-order {id} [EXISTS(lineItems [warehouse.id != order.customer.warehouse.id])]
+order {id} [EXISTS(lineItems [warehouse.id != ^order.customer.warehouse.id])]
 ```
 
 ## `subquery(relation, projection, filter?)` — parenthesized subquery

@@ -874,6 +874,28 @@ describe('runtime: outer (correlated subquery)', () => {
       [ID.t1, ID.t3],
     )
   })
+
+  it('reaches the enclosing row from a subquery entity with no relation back to it', async () => {
+    // A user has no `store` attribute, so the reference can only resolve against the enclosing store.
+    const correlated = await query(db, 'store')
+      .select('id')
+      .where(exists(db.store.users, eq(db.user.account, outer(db.store.account))))
+      .orderBy(asc(db.store.id))
+      .many()
+    const stores = await query(db, 'store')
+      .select('id', { account: ['id'] }, { users: [{ account: ['id'] }] })
+      .orderBy(asc(db.store.id))
+      .many()
+    const expected = stores
+      .filter((store) => store.users.some((user) => user.account.id === store.account.id))
+      .map((store) => store.id)
+
+    assert.ok(expected.length > 0)
+    assert.deepStrictEqual(
+      correlated.map((store) => store.id),
+      expected,
+    )
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════

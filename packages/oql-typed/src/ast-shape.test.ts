@@ -300,7 +300,7 @@ describe('toAST() shape', () => {
     })
   })
 
-  it('outer() emits the outer-entity-prefixed attr inside a subquery', () => {
+  it('outer() emits an outer node headed by the enclosing entity inside a subquery', () => {
     const ast = query(db, 'vehicle')
       .select('id')
       .where(exists(db.vehicle.trips, ne(db.trip.store, outer(db.vehicle.store))))
@@ -312,7 +312,7 @@ describe('toAST() shape', () => {
         kind: 'infix',
         op: '!=',
         left: { kind: 'ref', ids: ['store'] },
-        right: { kind: 'attr', ids: ['vehicle', 'store', 'id'] },
+        right: { kind: 'outer', ids: ['vehicle', 'store', 'id'] },
       },
     })
   })
@@ -321,11 +321,11 @@ describe('toAST() shape', () => {
     // A two-hop correlated path must resolve to the chain's root (trip), not the
     // field's immediate owner (place/store). m2o ref and its .id column agree.
     assert.deepStrictEqual((outer(db.trip.store.place) as any).toAST(), {
-      kind: 'attr',
+      kind: 'outer',
       ids: ['trip', 'store', 'place', 'id'],
     })
     assert.deepStrictEqual((outer(db.trip.store.place.id) as any).toAST(), {
-      kind: 'attr',
+      kind: 'outer',
       ids: ['trip', 'store', 'place', 'id'],
     })
   })
@@ -342,7 +342,7 @@ describe('toAST() shape', () => {
         kind: 'infix',
         op: '!=',
         left: { kind: 'ref', ids: ['place'] },
-        right: { kind: 'attr', ids: ['trip', 'store', 'place', 'id'] },
+        right: { kind: 'outer', ids: ['trip', 'store', 'place', 'id'] },
       },
     })
   })

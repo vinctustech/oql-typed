@@ -290,14 +290,15 @@ export function ref<S extends Schema, Target extends keyof S>(
 
 // ══════════════════════════════════════════════════════════════════════
 // outer(field) — correlated reference to the ENCLOSING query's row from inside
-// a subquery. Prefixes the field's path with the ROOT entity the ref chain was
-// started from (`db.<root>…`), so it resolves to the outer scope — matching how
-// OQL references the enclosing query (leading segment = outer entity name):
+// a subquery. Emits OQL's outer reference `^<root>.<path>`, where <root> is the
+// entity the ref chain was started from (`db.<root>…`); OQL resolves it against
+// the nearest enclosing query over that entity and renders it on that query's
+// alias, so the subquery joins nothing to reach it:
 //   exists(db.order.lineItems, ne(db.lineItem.warehouse, outer(db.order.warehouse)))
-//     →  EXISTS(lineItems [warehouse.id != order.warehouse.id])
+//     →  EXISTS(lineItems [warehouse.id != ^order.warehouse.id])
 // The path may cross any number of relation hops; the root is preserved across
 // every hop (see createRelationRef), so a multi-hop ref works too:
-//   outer(db.trip.store.place)  →  trip.store.place.id
+//   outer(db.trip.store.place)  →  ^trip.store.place.id
 // ══════════════════════════════════════════════════════════════════════
 
 export function outer<T>(field: FieldRef<T>): OQLExpr<T> & FieldRef<T>
@@ -306,12 +307,12 @@ export function outer<S extends Schema, Target extends keyof S>(
 ): OQLExpr<PKType<S, Target>> & FieldRef<PKType<S, Target>>
 export function outer(field: any): any {
   // A correlated reference names the enclosing query's row, so it takes the
-  // joined path (m2o -> ".id") rather than the foreign-key column; prefix it
-  // with the chain's ROOT entity (not the field's immediate owner) to reach the
+  // joined path (m2o -> ".id") rather than the foreign-key column; its head is
+  // the chain's ROOT entity (not the field's immediate owner), which names the
   // enclosing query across any number of relation hops.
   const root = field.rootEntityName ?? field.entityName
   const ids = [String(root), ...joinedFieldPath(field)]
-  const path = ids.join('.')
+  const path = `^${ids.join('.')}`
   return {
     __oqlExpr: true,
     __fieldRef: true,
@@ -323,7 +324,7 @@ export function outer(field: any): any {
       return path
     },
     toAST(): ASTNode {
-      return { kind: 'attr', ids }
+      return { kind: 'outer', ids }
     },
   }
 }
